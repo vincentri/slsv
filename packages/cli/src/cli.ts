@@ -7,7 +7,6 @@ import { ministackReset } from './providers/aws/ministack.js'
 import { deploy } from './deploy.js'
 import { startDev } from './dev.js'
 import { initScaffold, initOutroMessage, type Template, type Stack } from './init.js'
-import { startUi } from './ui.js'
 
 const program = new Command()
 
@@ -125,15 +124,6 @@ program
     const cfg = loadConfig(process.cwd())
     const provider = new AwsProvider('local')
     await provider.tailLogs(`${cfg.app}-${fnName}`, opts.follow)
-  })
-
-program
-  .command('ui')
-  .description('Launch local dashboard UI')
-  .option('--target <target>', 'local or aws', 'local')
-  .option('--port <port>', 'UI server port', '4567')
-  .action(async (opts) => {
-    await startUi({ target: opts.target, port: Number(opts.port), cwd: process.cwd() })
   })
 
 program
