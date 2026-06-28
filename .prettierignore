@@ -1,0 +1,7 @@
+dist
+dist-server
+node_modules
+coverage
+pnpm-lock.yaml
+**/*.yaml
+packages/ui/src/components/ui

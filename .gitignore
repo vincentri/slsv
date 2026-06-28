@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-server/
+packages/cli/templates/
+.slsv/
+*.js.map
+packages/ui/src-tauri/target/
+packages/ui/src-tauri/gen/

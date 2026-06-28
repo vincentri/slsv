@@ -1,0 +1,22 @@
+{
+  "name": "slsv-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "slsv — simple local-AWS serverless framework (monorepo)",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "lint:eslint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
+    "prettier": "^3.9.0",
+    "typescript-eslint": "^8.62.0"
+  }
+}

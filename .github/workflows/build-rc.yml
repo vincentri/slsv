@@ -1,0 +1,62 @@
+name: Build RC
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Bump patch version
+        run: |
+          CURRENT=$(jq -r .version packages/ui/src-tauri/tauri.conf.json)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          NEW="$MAJOR.$MINOR.$((PATCH+1))"
+          jq --arg v "$NEW" '.version = $v' packages/ui/src-tauri/tauri.conf.json > /tmp/tauri.conf.json && mv /tmp/tauri.conf.json packages/ui/src-tauri/tauri.conf.json
+          sed -i '' "s/^version = \"$CURRENT\"/version = \"$NEW\"/" packages/ui/src-tauri/Cargo.toml
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add packages/ui/src-tauri/tauri.conf.json packages/ui/src-tauri/Cargo.toml
+          git commit -m "chore: bump version to $NEW [skip ci]"
+          git push
+          echo "VERSION=$NEW" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Vite + server
+        run: pnpm --filter @slsv/ui build
+
+      - name: Build Tauri
+        run: pnpm --filter @slsv/ui tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload RC release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}-rc.${{ github.run_number }}
+          prerelease: true
+          name: v${{ env.VERSION }} RC.${{ github.run_number }}
+          files: |
+            packages/ui/src-tauri/target/release/bundle/macos/*.dmg
+            packages/ui/src-tauri/target/release/bundle/macos/*.app.tar.gz
+            packages/ui/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
