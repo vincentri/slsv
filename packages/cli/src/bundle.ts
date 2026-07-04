@@ -24,7 +24,7 @@ export async function bundleHandler(
     target: 'node20',
     format: 'cjs',
     write: false,
-    // ponytail: bundle everything (incl @aws-sdk). MiniStack/Lambda base image
+    // ponytail: bundle everything (incl @aws-sdk). Floci/Lambda base image
     // doesn't ship lib-dynamodb, so don't externalize. Bigger zip, always works.
     sourcemap: false,
     nodePaths: CLI_NODE_MODULES,

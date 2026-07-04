@@ -1,5 +1,5 @@
 import { LambdaClient } from '@aws-sdk/client-lambda'
-import { APIGatewayClient } from '@aws-sdk/client-api-gateway'
+import { ApiGatewayV2Client } from '@aws-sdk/client-apigatewayv2'
 import { SQSClient } from '@aws-sdk/client-sqs'
 import { EventBridgeClient } from '@aws-sdk/client-eventbridge'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
@@ -22,7 +22,7 @@ export function makeClients(target: 'local' | 'aws' = 'local') {
   const cfg = target === 'local' ? LOCAL_CFG : { region: process.env.AWS_REGION }
   return {
     lambda: new LambdaClient(cfg),
-    apigw: new APIGatewayClient(cfg),
+    apigw: new ApiGatewayV2Client(cfg),
     sqs: new SQSClient(cfg),
     events: new EventBridgeClient(cfg),
     dynamo: new DynamoDBClient(cfg),

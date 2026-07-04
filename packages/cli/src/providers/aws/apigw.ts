@@ -1,119 +1,205 @@
 import {
-  APIGatewayClient,
-  CreateRestApiCommand,
-  GetRestApisCommand,
-  GetResourcesCommand,
-  CreateResourceCommand,
-  PutMethodCommand,
-  PutIntegrationCommand,
-  CreateDeploymentCommand,
-} from '@aws-sdk/client-api-gateway'
-import { LambdaClient, AddPermissionCommand } from '@aws-sdk/client-lambda'
+  ApiGatewayV2Client,
+  CreateApiCommand,
+  CreateIntegrationCommand,
+  CreateRouteCommand,
+  CreateStageCommand,
+  GetApisCommand,
+  GetIntegrationsCommand,
+  GetRoutesCommand,
+  GetStagesCommand,
+  UpdateIntegrationCommand,
+  UpdateRouteCommand,
+} from '@aws-sdk/client-apigatewayv2'
+import { AddPermissionCommand, LambdaClient } from '@aws-sdk/client-lambda'
 import type { AppConfig } from '../../config.js'
+import type { AwsFnOutput } from './functions.js'
 
-export type AwsFnOutput = { arn: string; name: string }
+const FLOCI_ENDPOINT = 'http://localhost:4566'
 
 export async function ensureApiGateway(
-  apigw: APIGatewayClient,
+  apigw: ApiGatewayV2Client,
   lambda: LambdaClient,
-  functions: AppConfig['functions'],
-  fnOutputs: Record<string, AwsFnOutput>,
+  functions: NonNullable<AppConfig['functions']>,
+  outputs: Record<string, AwsFnOutput>,
   appName: string,
-): Promise<string> {
-  const region = 'us-east-1'
+): Promise<string | undefined> {
+  const httpFunctions = Object.entries(functions).filter(([, fn]) => fn.http?.length)
+  if (httpFunctions.length === 0) return undefined
 
-  const apis = await apigw.send(new GetRestApisCommand({}))
-  let apiId = apis.items?.find((a) => a.name === appName)?.id
+  const api = await ensureHttpApi(apigw, appName)
+  if (!api.ApiId) throw new Error(`API Gateway HTTP API for ${appName} is missing an id`)
 
-  if (!apiId) {
-    const api = await apigw.send(new CreateRestApiCommand({ name: appName }))
-    apiId = api.id!
-  }
+  await ensureStage(apigw, api.ApiId)
 
-  const resources = await apigw.send(new GetResourcesCommand({ restApiId: apiId }))
-  const rootId = resources.items?.find((r) => r.path === '/')!.id!
-  // Seed with ALL existing resources so re-deploy is idempotent (no duplicate CreateResource)
-  const resourceMap: Record<string, string> = {}
-  for (const r of resources.items ?? []) {
-    if (r.path && r.id) resourceMap[r.path] = r.id
-  }
+  const integrations = await listIntegrations(apigw, api.ApiId)
+  const routes = await listRoutes(apigw, api.ApiId)
 
-  for (const [fnName, fn] of Object.entries(functions ?? {})) {
-    if (!fn.http) continue
-    const fnOutput = fnOutputs[fnName]
+  for (const [name, fn] of httpFunctions) {
+    const fnOutput = outputs[name]
+    if (!fnOutput) continue
 
-    for (const route of fn.http) {
-      const parts = route.path.split('/').filter(Boolean)
-      let parentId = rootId
-      let currentPath = ''
+    const integration = await ensureLambdaIntegration(
+      apigw,
+      api.ApiId,
+      fnOutput.arn,
+      integrations,
+    )
 
-      for (const part of parts) {
-        currentPath += `/${part}`
-        if (!resourceMap[currentPath]) {
-          const res = await apigw.send(
-            new CreateResourceCommand({
-              restApiId: apiId,
-              parentId,
-              pathPart: part,
-            }),
-          )
-          resourceMap[currentPath] = res.id!
-        }
-        parentId = resourceMap[currentPath]
-      }
+    if (!integration.IntegrationId) {
+      throw new Error(`API Gateway integration for ${fnOutput.arn} is missing an id`)
+    }
 
-      const resourceId = parts.length ? resourceMap[currentPath] : rootId
-
-      try {
-        await apigw.send(
-          new PutMethodCommand({
-            restApiId: apiId,
-            resourceId,
-            httpMethod: route.method,
-            authorizationType: 'NONE',
-          }),
-        )
-      } catch (e: any) {
-        if (e.name !== 'ConflictException') throw e
-      }
-
-      const uri = `arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${fnOutput.arn}/invocations`
-
-      try {
-        await apigw.send(
-          new PutIntegrationCommand({
-            restApiId: apiId,
-            resourceId,
-            httpMethod: route.method,
-            type: 'AWS_PROXY',
-            integrationHttpMethod: 'POST',
-            uri,
-          }),
-        )
-      } catch (e: any) {
-        if (e.name !== 'ConflictException') throw e
-      }
-
-      try {
-        await lambda.send(
-          new AddPermissionCommand({
-            FunctionName: fnOutput.name,
-            StatementId: `apigw-${apiId}-${fnOutput.name}-${route.method}`.replace(
-              /[^a-zA-Z0-9-_]/g,
-              '-',
-            ),
-            Action: 'lambda:InvokeFunction',
-            Principal: 'apigateway.amazonaws.com',
-            SourceArn: `arn:aws:execute-api:${region}:000000000000:${apiId}/*/*`,
-          }),
-        )
-      } catch (e: any) {
-        if (e.name !== 'ResourceConflictException') throw e
-      }
+    for (const route of fn.http ?? []) {
+      const routeKey = toRouteKey(route.method, route.path)
+      await ensureRoute(apigw, api.ApiId, routeKey, integration.IntegrationId, routes)
+      await allowApiGatewayInvoke(lambda, appName, api.ApiId, routeKey, fnOutput.arn)
     }
   }
 
-  await apigw.send(new CreateDeploymentCommand({ restApiId: apiId, stageName: 'local' }))
+  return localApiEndpoint(api.ApiId, api.ApiEndpoint)
+}
 
-  return `http://localhost:4566/restapis/${apiId}/local/_user_request_`
+async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string) {
+  const existing = await apigw.send(new GetApisCommand({}))
+  const found = existing.Items?.find((api) => api.Name === appName)
+  if (found) return found
+
+  return apigw.send(
+    new CreateApiCommand({
+      Name: appName,
+      ProtocolType: 'HTTP',
+    }),
+  )
+}
+
+async function ensureStage(apigw: ApiGatewayV2Client, apiId: string) {
+  const existing = await apigw.send(new GetStagesCommand({ ApiId: apiId }))
+  const found = existing.Items?.find((stage) => stage.StageName === '$default')
+  if (found) return found
+
+  return apigw.send(
+    new CreateStageCommand({
+      ApiId: apiId,
+      StageName: '$default',
+      AutoDeploy: true,
+    }),
+  )
+}
+
+async function ensureLambdaIntegration(
+  apigw: ApiGatewayV2Client,
+  apiId: string,
+  functionArn: string,
+  integrations: Awaited<ReturnType<typeof listIntegrations>>,
+) {
+  const found = integrations.find((integration) => integration.IntegrationUri === functionArn)
+  if (found) return found
+
+  return apigw.send(
+    new CreateIntegrationCommand({
+      ApiId: apiId,
+      IntegrationType: 'AWS_PROXY',
+      IntegrationMethod: 'POST',
+      IntegrationUri: functionArn,
+      PayloadFormatVersion: '2.0',
+    }),
+  )
+}
+
+async function ensureRoute(
+  apigw: ApiGatewayV2Client,
+  apiId: string,
+  routeKey: string,
+  integrationId: string,
+  routes: Awaited<ReturnType<typeof listRoutes>>,
+) {
+  const target = `integrations/${integrationId}`
+  const found = routes.find((route) => route.RouteKey === routeKey)
+
+  if (!found) {
+    const created = await apigw.send(
+      new CreateRouteCommand({
+        ApiId: apiId,
+        RouteKey: routeKey,
+        Target: target,
+      }),
+    )
+    return created
+  }
+
+  if (found.Target !== target && found.RouteId) {
+    const updated = await apigw.send(
+      new UpdateRouteCommand({
+        ApiId: apiId,
+        RouteId: found.RouteId,
+        Target: target,
+      }),
+    )
+    found.Target = updated.Target
+    return updated
+  }
+
+  return found
+}
+
+async function allowApiGatewayInvoke(
+  lambda: LambdaClient,
+  appName: string,
+  apiId: string,
+  routeKey: string,
+  functionArn: string,
+) {
+  const statementId = permissionStatementId(appName, apiId, routeKey)
+  const sourceArn = `arn:aws:execute-api:us-east-1:000000000000:${apiId}/*/*`
+
+  try {
+    await lambda.send(
+      new AddPermissionCommand({
+        FunctionName: functionArn,
+        StatementId: statementId,
+        Action: 'lambda:InvokeFunction',
+        Principal: 'apigateway.amazonaws.com',
+        SourceArn: sourceArn,
+      }),
+    )
+  } catch (e) {
+    if (!isAlreadyExists(e)) throw e
+  }
+}
+
+async function listIntegrations(apigw: ApiGatewayV2Client, apiId: string) {
+  const integrations = await apigw.send(new GetIntegrationsCommand({ ApiId: apiId }))
+  return integrations.Items ?? []
+}
+
+async function listRoutes(apigw: ApiGatewayV2Client, apiId: string) {
+  const routes = await apigw.send(new GetRoutesCommand({ ApiId: apiId }))
+  return routes.Items ?? []
+}
+
+function toRouteKey(method: string | undefined, path: string) {
+  return `${(method ?? 'ANY').toUpperCase()} ${path}`
+}
+
+function permissionStatementId(appName: string, apiId: string, routeKey: string) {
+  return `${appName}-${apiId}-${routeKey}`.replace(/[^A-Za-z0-9-_]/g, '-').slice(0, 100)
+}
+
+function isAlreadyExists(e: unknown) {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'name' in e &&
+    (e as { name?: string }).name === 'ResourceConflictException'
+  )
+}
+
+function localHttpApiUrl(apiId: string) {
+  return `${FLOCI_ENDPOINT}/execute-api/${apiId}/$default`
+}
+
+function localApiEndpoint(apiId: string, endpoint: string | undefined) {
+  if (endpoint?.includes('localhost')) return endpoint
+  return localHttpApiUrl(apiId)
 }

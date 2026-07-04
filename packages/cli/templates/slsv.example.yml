@@ -1,0 +1,87 @@
+# slsv.yml — full reference. Every knob shown. Copy, trim, ship.
+# All optional fields have sane defaults; minimal slsv.yml = just `app:` + one resource.
+
+app: my-app
+
+functions:
+  api:
+    runtime: nodejs22
+    handler: ./src/api.handler
+    http:
+      - method: ANY
+        path: /api/{proxy+}
+      - method: GET
+        path: /health
+
+  worker:
+    runtime: nodejs22
+    handler: ./src/worker.handler
+    queue: { name: jobs } # SQS trigger — Lambda invoked per message
+
+  cron:
+    runtime: nodejs22
+    handler: ./src/cron.handler
+    cron: { schedule: '0 8 * * *' } # EventBridge — 5-field unix cron OR rate()
+
+queues:
+  jobs:
+    type: sqs
+    # fifo: true                       # FIFO ordering + dedup (suffix .fifo auto-added)
+    # visibilityTimeout: 60            # seconds (default 30, max 43200)
+    # dlq: jobsFailed                  # logical name of another queue (must exist)
+
+  # jobsFailed: { type: sqs }         # DLQ target — FIFO main queue needs FIFO DLQ
+
+  # ordered:
+  #   type: sqs
+  #   fifo: true
+
+buckets:
+  uploads: {} # no per-bucket knobs in phase 1
+
+databases:
+  # dynamodb — NoSQL table; access with db('orders') → DATABASE_ORDERS
+  orders:
+    type: dynamodb
+    partitionKey: { name: id, type: S } # S | N | B
+    sortKey: { name: createdAt, type: S } # optional
+    gsi: # optional (dynamodb only)
+      - name: byUser
+        partitionKey: { name: userId, type: S }
+        sortKey: { name: createdAt, type: S }
+
+  # postgres / mysql — SQL instance via RDS API; access with db('primary') → DATABASE_PRIMARY
+  primary:
+    type: postgres
+    # name: primary                    # actual DB name; defaults to logical key
+    # init_sql: ./schema.sql           # path to SQL, runs once on first creation
+    # instanceClass: db.t3.micro       # RDS class (--target aws only; default db.t3.micro)
+    # storage: 20                      # GB (--target aws only; default 20, max 65536)
+    # multiAz: false                   # (--target aws only)
+
+  # replica:
+  #   type: mysql
+  #   instanceClass: db.t4g.small
+
+  # byo:
+  #   type: external                   # BYO connection string from DATABASE_BYO env
+
+caches:
+  session:
+    type: valkey                      # `type: redis` is an alias — same backend
+    # nodeType: cache.t3.micro         # ElastiCache node type (--target aws only)
+    # nodes: 1                         # NumCacheNodes (--target aws only; 1-5)
+
+  # big:
+  #   type: valkey
+  #   nodeType: cache.r6g.large
+  #   nodes: 3
+
+secrets:
+  - JWT_SECRET                        # read from .env, injected into every function
+  - WEBHOOK_SECRET
+
+frontend:
+  src: ./frontend/dist                # build output to serve
+  build: npm --prefix frontend install && npm --prefix frontend run build # build cmd
+  # cloudfront: true                  # CloudFront distribution on --target aws

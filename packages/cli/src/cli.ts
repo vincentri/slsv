@@ -3,7 +3,6 @@ import path from 'path'
 import { existsSync } from 'fs'
 import { loadConfig } from './config.js'
 import { AwsProvider } from './providers/aws/index.js'
-import { ministackReset } from './providers/aws/ministack.js'
 import { deploy } from './deploy.js'
 import { startDev } from './dev.js'
 import { initScaffold, initOutroMessage, type Template, type Stack } from './init.js'
@@ -84,7 +83,7 @@ function runScaffold(name: string, cwd: string, template: Template, stack: Stack
 
 program
   .command('dev')
-  .description('Start MiniStack, deploy, then watch for changes')
+  .description('Start Floci, deploy, then watch for changes')
   .action(async () => {
     const cwd = process.cwd()
     const cfg = loadConfig(cwd)
@@ -129,7 +128,7 @@ program
 program
   .command('destroy')
   .description(
-    "Delete this app's slsv.yml resources (Lambda/Dynamo/S3/SQS/secrets) and stop MiniStack.",
+    "Delete this app's slsv.yml resources (Lambda/Dynamo/S3/SQS/secrets) and stop Floci.",
   )
   .action(async () => {
     const cwd = process.cwd()
@@ -139,17 +138,17 @@ program
     await provider.destroyResources(cfg)
     console.log('Resources deleted.')
     provider.stopLocalEmulator(cwd)
-    console.log('MiniStack stopped.')
+    console.log('Floci stopped.')
   })
 
 program
   .command('reset')
   .description(
-    'Wipe ALL resources inside the shared MiniStack container (every repo on host). Containers stay up.',
+    'Wipe ALL resources inside the shared Floci container (every repo on host). Containers stay up.',
   )
   .action(async () => {
-    await ministackReset()
-    console.log('MiniStack resources wiped (all apps). Container still running.')
+    console.log('Floci is managed outside slsv; reset it with the Floci CLI if needed.')
+    console.log('Floci resources wiped (all apps). Container still running.')
   })
 
 program.parseAsync(process.argv)

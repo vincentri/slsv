@@ -1,8 +1,0 @@
-accounts:
-  - name: local
-    endpoint: http://localhost:4566
-    region: us-east-1
-
-  - name: aws
-    profile: default
-    region: ap-southeast-1

@@ -109,8 +109,9 @@ functions:
       - method: ANY
         path: /api/{proxy+}
 
-tables:
+databases:
   items:
+    type: dynamodb
     partitionKey:
       name: id
       type: S`
@@ -130,164 +131,41 @@ const MINIMAL_ENV_EXAMPLE = `# No secrets required for the minimal template
 # Copy to .env and run: slsv dev
 `
 
-const MINIMAL_API_HANDLER = `import { db } from '@slsv/sdk'
+const MINIMAL_API_HANDLER = `import { json, router } from '@slsv/sdk'
 
-export const handler = async (event: any) => {
-  const method = event.httpMethod as string
-  const path = event.path as string
+type Link = { id: string; url: string; createdAt: string }
 
-  if (path === '/api/health') return json(200, { status: 'ok' })
+const links = new Map<string, Link>()
 
-  if (method === 'POST' && path.startsWith('/api/items')) {
-    const body = JSON.parse(event.body ?? '{}')
-    const id = Date.now().toString()
-    await db('items').put({ id, ...body })
-    return json(201, { id })
-  }
+export const handler = router([
+  {
+    method: 'GET',
+    path: '/api/health',
+    handler: () => json({ status: 'ok' }),
+  },
+  {
+    method: 'POST',
+    path: '/api/links',
+    handler: async (req) => {
+      const body = req.body as { url?: string } | undefined
+      if (!body?.url) return json({ error: 'url is required' }, 400)
 
-  if (method === 'GET' && path.startsWith('/api/items')) {
-    return json(200, await db('items').scan())
-  }
-
-  return json(404, { error: 'not found' })
-}
-
-function json(statusCode: number, body: unknown) {
-  return { statusCode, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
-}
+      const link = {
+        id: Date.now().toString(),
+        url: body.url,
+        createdAt: new Date().toISOString(),
+      }
+      links.set(link.id, link)
+      return json(link, 201)
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/links',
+    handler: async () => json([...links.values()]),
+  },
+])
 `
-
-// ─── Demo template ──────────────────────────────────────────────────────────
-
-const DEMO_SLSV_YML = (name: string) => `app: ${name}
-
-functions:
-  api:
-    runtime: nodejs22
-    handler: ./src/api.handler
-    http:
-      - method: ANY
-        path: /api/{proxy+}
-      - method: GET
-        path: /health
-
-  paymentWebhook:
-    runtime: nodejs22
-    handler: ./src/webhooks/payment.handler
-    http:
-      - method: POST
-        path: /webhooks/payment
-
-  sendReceipt:
-    runtime: nodejs22
-    handler: ./src/jobs/send-receipt.handler
-    queue:
-      name: emailQueue
-
-  dailyInvoice:
-    runtime: nodejs22
-    handler: ./src/jobs/daily-invoice.handler
-    cron:
-      schedule: "0 8 * * *"
-
-queues:
-  emailQueue:
-    type: sqs
-
-tables:
-  invoices:
-    partitionKey:
-      name: id
-      type: S
-    sortKey:
-      name: createdAt
-      type: S
-
-buckets:
-  receipts: {}
-
-secrets:
-  - WEBHOOK_SECRET
-  - JWT_SECRET
-`
-
-// Values are valid as-is for local dev — no external signup required
-const DEMO_ENV_EXAMPLE = `WEBHOOK_SECRET=local-webhook-secret
-JWT_SECRET=local-jwt-secret
-`
-
-const DEMO_API_HANDLER = `import { db } from '@slsv/sdk'
-
-export const handler = async (event: any) => {
-  const method = event.httpMethod as string
-  const path = event.path as string
-
-  if (path === '/api/health') return json(200, { status: 'ok' })
-
-  if (method === 'POST' && path.startsWith('/api/invoices')) {
-    const body = JSON.parse(event.body ?? '{}')
-    const id = Date.now().toString()
-    const createdAt = new Date().toISOString()
-    await db('invoices').put({ id, createdAt, ...body })
-    return json(201, { id, createdAt })
-  }
-
-  if (method === 'GET' && path.startsWith('/api/invoices')) {
-    return json(200, await db('invoices').scan())
-  }
-
-  return json(404, { error: 'not found' })
-}
-
-function json(statusCode: number, body: unknown) {
-  return { statusCode, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
-}
-`
-
-const PAYMENT_HANDLER = `import { queue } from '@slsv/sdk'
-
-export const handler = async (event: any) => {
-  const secret = event.headers?.['x-webhook-secret']
-  if (secret !== process.env.WEBHOOK_SECRET) {
-    return { statusCode: 401, body: 'Unauthorized' }
-  }
-
-  const body = JSON.parse(event.body ?? '{}') as { invoiceId: string; email: string; amount: number }
-
-  await queue('emailQueue').send({
-    email: body.email,
-    invoiceId: body.invoiceId,
-  })
-
-  return { statusCode: 200, body: 'ok' }
-}
-`
-
-const SEND_RECEIPT_HANDLER = `import { storage } from '@slsv/sdk'
-
-export const handler = async (event: any) => {
-  for (const record of event.Records ?? []) {
-    const { email, invoiceId } = JSON.parse(record.body) as { email: string; invoiceId: string }
-    console.log(\`Sending receipt to \${email} for invoice \${invoiceId}\`)
-
-    await storage('receipts').put(
-      \`receipts/\${invoiceId}.txt\`,
-      \`Receipt for invoice \${invoiceId} sent to \${email} at \${new Date().toISOString()}\`,
-    )
-  }
-}
-`
-
-const DAILY_INVOICE_HANDLER = `import { db } from '@slsv/sdk'
-
-export const handler = async () => {
-  const invoices = await db('invoices').scan()
-  console.log(\`Daily summary: \${invoices.length} invoices\`)
-  return { processed: invoices.length }
-}
-`
-
-// ─── Shared ─────────────────────────────────────────────────────────────────
 
 const PKG_JSON = (name: string) =>
   JSON.stringify(

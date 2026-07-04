@@ -12,13 +12,14 @@ functions:
     http:
       - method: GET
         path: /health
-tables:
+databases:
   items:
+    type: dynamodb
     partitionKey: { name: id, type: S }
 ```
 
 ```sh
-slsv dev   # MiniStack up → deploy → watch for changes
+slsv dev   # Floci up → deploy → watch for changes
 ```
 
 ---
@@ -27,7 +28,7 @@ slsv dev   # MiniStack up → deploy → watch for changes
 
 - Node 20+
 - pnpm 9+
-- Docker (for MiniStack)
+- Docker (for Floci)
 
 ---
 
@@ -63,7 +64,7 @@ slsv dev
 
 `slsv dev` does:
 
-1. Starts MiniStack (+ Redis if caches declared)
+1. Starts Floci (+ Valkey cache if caches declared)
 2. Deploys all resources (IAM, DynamoDB, S3, SQS, Lambda, API Gateway, EventBridge)
 3. Watches `src/` — file change → rebundle → hot-reload Lambda in ~1s
 
@@ -76,7 +77,7 @@ slsv deploy              # deploy to local (same as dev without watch)
 slsv deploy --target aws # deploy to real AWS (needs AWS_REGION + credentials)
 slsv logs api            # tail CloudWatch logs for function "api"
 slsv logs api -f         # follow (live tail)
-slsv destroy             # stop MiniStack
+slsv destroy             # stop Floci
 ```
 
 ---
@@ -107,27 +108,38 @@ functions:
     cron: { schedule: '0 8 * * *' } # EventBridge cron (5-field)
 
 queues:
-  jobs: { type: sqs }
-
-tables:
-  orders:
-    partitionKey: { name: id, type: S }
-    sortKey: { name: createdAt, type: S } # optional
-    gsi: # optional
-      - name: byUser
-        partitionKey: { name: userId, type: S }
+  jobs: { type: sqs }                                  # standard SQS
+  # ordered: { type: sqs, fifo: true }                 # FIFO ordering + dedup
+  # with-dlq:
+  #   type: sqs
+  #   visibilityTimeout: 60                            # seconds
+  #   dlq: dead                                        # logical name of another queue
+  # dead: { type: sqs }
 
 buckets:
   uploads: {}
 
-databases: # passthrough — slsv injects URL, you bring the driver
-  primary:
+databases: # slsv injects DATABASE_<NAME> into every function
+  orders: # dynamodb — db('orders') → DATABASE_ORDERS
+    type: dynamodb
+    partitionKey: { name: id, type: S }
+    sortKey: { name: createdAt, type: S } # optional
+    gsi: # optional (dynamodb only)
+      - name: byUser
+        partitionKey: { name: userId, type: S }
+  primary: # postgres/mysql via RDS API — db('primary') → DATABASE_PRIMARY
     type: postgres
-    env: DATABASE_URL
+    # instanceClass: db.t3.small        # RDS instance class (--target aws only)
+    # storage: 100                      # GB (--target aws only)
+    # multiAz: true                     # (--target aws only)
 
-caches: # Redis — slsv runs the container locally
-  session: { type: redis }
-  ratelimit: { type: redis }
+caches: # valkey (write `type: redis` or `type: valkey` — same backend)
+  session: { type: valkey }
+  ratelimit: { type: valkey }
+  # big:
+  #   type: valkey
+  #   nodeType: cache.r6g.large         # ElastiCache node type (--target aws only)
+  #   nodes: 3                          # read replicas (--target aws only)
 
 secrets:
   - JWT_SECRET # read from .env, injected into every function
@@ -154,7 +166,7 @@ await queue('jobs').send({ userId: '123' })
 await storage('uploads').put('file.txt', 'hello')
 await storage('uploads').getText('file.txt')
 
-// Redis (by name — isolated keyspaces)
+// Redis / Valkey (by name — isolated keyspaces; `type: redis` and `type: valkey` are aliases)
 await cache('session').set('user:1', JSON.stringify(data), { ttl: 3600 })
 await cache('ratelimit').incr('ip:1.2.3.4')
 ```
@@ -214,12 +226,12 @@ packages/
       dev.ts           # chokidar hot-reload loop
       providers/
         types.ts       # Provider interface
-        aws/           # AwsProvider (MiniStack + real AWS)
+        aws/           # AwsProvider (Floci + real AWS)
   sdk/         # @slsv/sdk — import this in your handlers
     src/
       index.ts         # db / queue / storage / cache exports
-      resolve.ts       # logical name → env var (TABLE_X, QUEUE_X, ...)
-      providers/aws/   # DynamoDB, SQS, S3, Redis impls
+      resolve.ts       # logical name → env var (DATABASE_X, QUEUE_X, ...)
+      providers/aws/   # DynamoDB, SQS, S3, Valkey impls
 
 examples/
   invoice-app/ # reference app — always must work with slsv dev

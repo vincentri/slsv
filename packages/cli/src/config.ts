@@ -18,6 +18,9 @@ const FunctionConfig = z.object({
 
 const QueueConfig = z.object({
   type: z.enum(['sqs']),
+  fifo: z.boolean().optional(),
+  visibilityTimeout: z.number().int().positive().max(43200).optional(),
+  dlq: z.string().optional(),
 })
 
 const KeyAttr = z.object({
@@ -44,12 +47,17 @@ const SqlConfig = z.object({
   type: z.enum(['postgres', 'mysql', 'external']),
   name: z.string().optional(), // actual DB name for local container; defaults to logical key
   init_sql: z.string().optional(), // path to SQL file run once on local container init
+  instanceClass: z.string().optional(), // RDS instance class, default 'db.t3.micro'
+  storage: z.number().int().min(20).max(65536).optional(), // GB, default 20
+  multiAz: z.boolean().optional(), // default false
 })
 
 const DatabaseConfig = z.discriminatedUnion('type', [DynamoDbConfig, SqlConfig])
 
 const CacheConfig = z.object({
-  type: z.enum(['redis']),
+  type: z.enum(['redis', 'valkey']),
+  nodeType: z.string().optional(), // ElastiCache node type, default 'cache.t3.micro'
+  nodes: z.number().int().min(1).max(5).optional(), // NumCacheNodes, default 1
 })
 
 const FrontendConfig = z.object({

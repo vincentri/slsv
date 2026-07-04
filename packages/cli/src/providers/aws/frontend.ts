@@ -138,7 +138,7 @@ export async function deployFrontendAws(
   const s3Url = `http://${bucket}.s3-website-${region}.amazonaws.com`
   if (!frontend.cloudfront) return s3Url
 
-  // CloudFront always hits real AWS — not MiniStack
+  // CloudFront always hits real AWS — not Floci
   const cf = new CloudFrontClient({ region: 'us-east-1' })
   const origin = `${bucket}.s3-website-${region}.amazonaws.com`
 

@@ -1,6 +1,6 @@
 node_modules/
 dist/
 dist-server/
-packages/cli/templates/
 .slsv/
 *.js.map
+.serena

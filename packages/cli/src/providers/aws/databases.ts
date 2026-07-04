@@ -10,7 +10,7 @@ import mysql from 'mysql2/promise'
 import { envKey } from '../../env-key.js'
 import type { AppConfig } from '../../config.js'
 
-// Per-engine provisioning constants. Ministack spins up a real DB process per instance.
+// Per-engine provisioning constants. floci spins up a real DB process per instance.
 // postgres: master user 'postgres'/'postgres' (matches the old container defaults).
 // mysql: master user 'admin'/'adminadmin' — NOT 'root', which conflicts with mysql's
 // built-in root@localhost and crashes the container on first boot.
@@ -22,9 +22,9 @@ const ENGINE_CFG = {
 type SqlEngine = keyof typeof ENGINE_CFG
 
 // Each databases.<name> of type postgres|mysql → its own RDS DB instance (one per name).
-// Ministack emulates RDS: CreateDBInstance spins up a real DB process and returns its
-// endpoint (a slsv-local network IP, reachable from both the host and Lambda inside ministack).
-// Target-agnostic: the client endpoint decides where the call goes (ministack locally, real AWS otherwise).
+// floci emulates RDS: CreateDBInstance spins up a real DB process and returns its
+// endpoint (a slsv-local network IP, reachable from both the host and Lambda inside floci).
+// Target-agnostic: the client endpoint decides where the call goes (floci locally, real AWS otherwise).
 //
 // init_sql runs ONLY on first creation (when CreateDBInstance succeeds, not on AlreadyExists),
 // mirroring docker-entrypoint-initdb.d "runs once on fresh" semantics.
@@ -54,8 +54,10 @@ export async function ensureDbInstances(
             DBName: dbName,
             MasterUsername: ec.masterUser,
             MasterUserPassword: ec.masterPass,
-            DBInstanceClass: 'db.t3.micro',
-            AllocatedStorage: 20,
+            // ponytail: knobs apply on --target aws; floci runs single-instance regardless.
+            DBInstanceClass: cfg.instanceClass ?? 'db.t3.micro',
+            AllocatedStorage: cfg.storage ?? 20,
+            MultiAZ: cfg.multiAz ?? false,
           }),
         )
       } catch (e: any) {
@@ -88,7 +90,7 @@ async function describeInstance(client: RDSClient, instanceId: string) {
   return r?.DBInstances?.[0] ?? undefined
 }
 
-// ponytail: polls DescribeDBInstances up to 120s. Ministack is ~2-5s; real AWS is minutes.
+// ponytail: polls DescribeDBInstances up to 120s. floci is ~2-5s; real AWS is minutes.
 async function waitForAvailable(client: RDSClient, instanceId: string, maxMs = 120_000) {
   const start = Date.now()
   while (Date.now() - start < maxMs) {

@@ -1,4 +1,17 @@
 import type { Provider, DbClient, QueueClient, StorageClient, CacheClient } from './types.js'
+export {
+  json,
+  redirect,
+  request,
+  router,
+  text,
+  type ApiHandler,
+  type ApiRequest,
+  type ApiResponse,
+  type LambdaEvent,
+  type Route,
+} from './api.js'
+
 import { resolve } from './resolve.js'
 import { makeDb } from './providers/aws/db.js'
 import { makeQueue } from './providers/aws/queue.js'

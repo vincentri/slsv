@@ -2,7 +2,6 @@ import { envKey } from '../../env-key.js'
 import type { Provider, FunctionOutput } from '../types.js'
 import type { AppConfig } from '../../config.js'
 import { makeClients, type Clients } from './clients.js'
-import { ministackUp, ministackDown } from './ministack.js'
 import { ensureExecRole } from './iam.js'
 import { ensureLogGroup } from './logs.js'
 import { ensureDynamoTables } from './dynamodb.js'
@@ -45,19 +44,16 @@ export class AwsProvider implements Provider {
     this.clients = makeClients(target)
   }
 
-  async startLocalEmulator(cwd: string, cfg: AppConfig) {
-    // ponytail: MiniStack owns ALL infrastructure now (Lambda/Dynamo/SQS/S3/Redis/Postgres/MySQL).
-    // No sibling containers — everything is provisioned via its AWS API against MiniStack.
-    await ministackUp(cwd, cfg.app)
+  async startLocalEmulator(_cwd: string, _cfg: AppConfig) {
+    await ensureFlociAvailable()
   }
 
   stopLocalEmulator(cwd: string) {
-    ministackDown(cwd)
   }
 
   // ponytail: deletes only what slsv.yml DECLARES for this repo (Lambda/Dynamo/S3/SQS/secrets).
   // Derived wiring (API GW, EventBridge cron, event source mappings, IAM role, log groups) left behind —
-  // re-created on next deploy, harmless locally. Add cleanup if MiniStack clutter ever matters.
+  // re-created on next deploy, harmless locally. Add cleanup if Floci clutter ever matters.
   async destroyResources(cfg: AppConfig) {
     const appName = cfg.app
     const swallow = (ok: string[]) => (e: any) => {
@@ -168,9 +164,9 @@ export class AwsProvider implements Provider {
     caches: AppConfig['caches'],
     appName: string,
   ): Promise<Record<string, string>> {
-    // Each caches.<name> → ElastiCache Redis cluster (MiniStack locally, real AWS for --target aws).
-    // MiniStack spins up a real redis process per cluster; the endpoint comes back from the API.
-    // Local: override host→host.docker.internal so Lambda (inside the ministack container) reaches
+    // Each caches.<name> → ElastiCache Redis cluster (Floci locally, real AWS for --target aws).
+    // Floci spins up a real redis process per cluster; the endpoint comes back from the API.
+    // Local: override host→host.docker.internal so Lambda (inside the floci container) reaches
     // the host-published cluster ports. AWS: use the real endpoint address as-is.
     const hostOverride = this.target === 'local' ? 'host.docker.internal' : undefined
     return ensureCacheClusters(this.clients.elasticache, caches, appName, hostOverride)
@@ -187,7 +183,7 @@ export class AwsProvider implements Provider {
     ) as Record<string, import('../../config.js').DynamoDbDef>
     const dynamoEnvs = await ensureDynamoTables(this.clients.dynamo, dynamoEntries, appName)
 
-    // Postgres/MySQL: provisioned via the RDS API (MiniStack locally, real AWS for --target aws).
+    // Postgres/MySQL: provisioned via the RDS API (Floci locally, real AWS for --target aws).
     // init_sql runs once on first creation. Target-agnostic — the client endpoint decides where.
     const rdsEnvs = await ensureDbInstances(this.clients.rds, databases, appName, cwd)
 
@@ -284,5 +280,14 @@ export class AwsProvider implements Provider {
 
   async tailLogs(fnName: string, follow: boolean) {
     await tailLogs(this.clients.logs, fnName, follow)
+  }
+}
+
+async function ensureFlociAvailable() {
+  try {
+    const res = await fetch('http://localhost:4566/')
+    if (!res.ok) throw new Error(String(res.status))
+  } catch {
+    throw new Error('Floci is not reachable at http://localhost:4566. Start Floci before running slsv.')
   }
 }
