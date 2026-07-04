@@ -123,42 +123,6 @@ async function runInitSql(engine: SqlEngine, url: string, sql: string) {
 }
 
 // External databases: BYO connection string from process.env (DATABASE_<NAME>). Not provisioned.
-export function collectExternalDatabaseEnvs(
-  databases: AppConfig['databases'],
-  env: Record<string, string | undefined>,
-): Record<string, string> {
-  const result: Record<string, string> = {}
-  if (!databases) return result
-  for (const [name, cfg] of Object.entries(databases)) {
-    if (cfg.type !== 'external') continue
-    const key = envKey('DATABASE', name)
-    const value = env[key]
-    if (!value) {
-      console.warn(
-        `  ⚠ databases.${name}: env "${key}" not set — functions will not have this connection string`,
-      )
-      continue
-    }
-    result[key] = value
-  }
-  return result
-}
-
-// External DB urls for the UI inspector (postgres/mysql are discovered live via RDS API).
-export function collectExternalDatabaseUrls(
-  databases: AppConfig['databases'],
-  env: Record<string, string | undefined> = process.env,
-): { name: string; type: string; url: string }[] {
-  if (!databases) return []
-  const out: { name: string; type: string; url: string }[] = []
-  for (const [name, cfg] of Object.entries(databases)) {
-    if (cfg.type !== 'external') continue
-    const url = env[envKey('DATABASE', name)]
-    if (!url) continue
-    out.push({ name, type: cfg.type, url })
-  }
-  return out
-}
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))

@@ -59,4 +59,5 @@ export interface Provider {
   queue(physicalUrlOrName: string): QueueClient
   storage(physicalName: string): StorageClient
   cache(redisUrl: string): CacheClient
+  secret(secretId: string): Promise<string>
 }

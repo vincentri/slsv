@@ -19,6 +19,7 @@ export interface Provider {
   ensureSecrets(
     secrets: string[],
     env: Record<string, string | undefined>,
+    prefix: string,
   ): Promise<Record<string, string>>
   ensureCaches(caches: AppConfig['caches'], appName: string): Promise<Record<string, string>>
   ensureDatabases(
@@ -63,4 +64,6 @@ export interface Provider {
 
   // Observability
   tailLogs(fnName: string, follow: boolean): Promise<void>
+  // Prune resources deployed under this app+stage that are no longer in the manifest.
+  reconcile(cfg: AppConfig, stage: string): Promise<void>
 }

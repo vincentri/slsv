@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import path from 'path'
 import { existsSync } from 'fs'
-import { loadConfig } from './config.js'
+import { loadConfig, ConfigError } from './config.js'
 import { AwsProvider } from './providers/aws/index.js'
 import { deploy } from './deploy.js'
 import { startDev } from './dev.js'
@@ -9,7 +9,16 @@ import { initScaffold, initOutroMessage, type Template, type Stack } from './ini
 
 const program = new Command()
 
-program.name('slsv').description('Simple local-AWS serverless framework').version('0.1.0')
+// Stage name becomes part of every AWS resource name — keep it AWS-safe.
+function validStage(stage: string): string {
+  if (!/^[a-z0-9-]+$/.test(stage)) {
+    console.error(`Invalid --stage "${stage}": use lowercase letters, digits, and hyphens only.`)
+    process.exit(1)
+  }
+  return stage
+}
+
+program.name('slsv').description('Simple local-AWS serverless framework').version('0.0.1')
 
 program
   .command('init [name]')
@@ -84,32 +93,36 @@ function runScaffold(name: string, cwd: string, template: Template, stack: Stack
 program
   .command('dev')
   .description('Start Floci, deploy, then watch for changes')
-  .action(async () => {
+  .option('--stage <name>', 'deployment stage (namespaces resources)', 'dev')
+  .action(async (opts: { stage: string }) => {
     const cwd = process.cwd()
-    const cfg = loadConfig(cwd)
+    const stage = validStage(opts.stage)
+    const cfg = loadConfig(cwd, stage)
     const provider = new AwsProvider('local')
 
     await provider.startLocalEmulator(cwd, cfg)
-    const outputs = await deploy(cfg, provider, cwd, 'dev')
+    const outputs = await deploy(cfg, provider, cwd, 'dev', stage)
 
     if (outputs.apiUrl) console.log(`\nAPI → ${outputs.apiUrl}`)
     if (outputs.frontendUrl) console.log(`Frontend → ${outputs.frontendUrl}`)
 
-    await startDev(cfg, provider, cwd, outputs.apiUrl)
+    await startDev(cfg, provider, cwd, stage, outputs.apiUrl)
   })
 
 program
   .command('deploy')
   .description('Deploy (default: local, --target aws for real AWS)')
   .option('--target <target>', 'local or aws', 'local')
-  .action(async (opts: { target: 'local' | 'aws' }) => {
+  .option('--stage <name>', 'deployment stage (namespaces resources)', 'dev')
+  .action(async (opts: { target: 'local' | 'aws'; stage: string }) => {
     const cwd = process.cwd()
-    const cfg = loadConfig(cwd)
+    const stage = validStage(opts.stage)
+    const cfg = loadConfig(cwd, stage)
     const provider = new AwsProvider(opts.target)
 
     if (opts.target === 'local') await provider.startLocalEmulator(cwd, cfg)
 
-    const outputs = await deploy(cfg, provider, cwd)
+    const outputs = await deploy(cfg, provider, cwd, 'deploy', stage)
 
     if (outputs.apiUrl) console.log(`\nAPI → ${outputs.apiUrl}`)
     if (outputs.frontendUrl) console.log(`Frontend → ${outputs.frontendUrl}`)
@@ -119,26 +132,54 @@ program
   .command('logs <function>')
   .description('Tail CloudWatch logs for a function')
   .option('-f, --follow', 'Follow log output', false)
-  .action(async (fnName: string, opts: { follow: boolean }) => {
-    const cfg = loadConfig(process.cwd())
+  .option('--stage <name>', 'deployment stage', 'dev')
+  .action(async (fnName: string, opts: { follow: boolean; stage: string }) => {
+    const stage = validStage(opts.stage)
+    const cfg = loadConfig(process.cwd(), stage)
     const provider = new AwsProvider('local')
-    await provider.tailLogs(`${cfg.app}-${fnName}`, opts.follow)
+    await provider.tailLogs(`${cfg.app}-${stage}-${fnName}`, opts.follow)
+  })
+
+program
+  .command('status')
+  .description('List resources currently deployed for this app + stage')
+  .option('--stage <name>', 'deployment stage', 'dev')
+  .option('--target <target>', 'local or aws', 'local')
+  .action(async (opts: { stage: string; target: 'local' | 'aws' }) => {
+    const stage = validStage(opts.stage)
+    const cfg = loadConfig(process.cwd(), stage)
+    const provider = new AwsProvider(opts.target)
+    const groups = await provider.status(cfg, stage)
+    console.log(`\n${cfg.app} (stage: ${stage})`)
+    let total = 0
+    for (const [type, names] of Object.entries(groups)) {
+      if (names.length === 0) continue
+      total += names.length
+      console.log(`\n  ${type} (${names.length})`)
+      for (const n of names) console.log(`    ${n}`)
+    }
+    if (total === 0) console.log('\n  Nothing deployed. Run `slsv deploy`.')
+    console.log('')
   })
 
 program
   .command('destroy')
-  .description(
-    "Delete this app's slsv.yml resources (Lambda/Dynamo/S3/SQS/secrets) and stop Floci.",
-  )
-  .action(async () => {
+  .description("Delete this app's slsv.yml resources (Lambda/Dynamo/S3/SQS/secrets/caches/db).")
+  .option('--stage <name>', 'deployment stage to destroy', 'dev')
+  .option('--target <target>', 'local or aws', 'local')
+  .action(async (opts: { stage: string; target: 'local' | 'aws' }) => {
     const cwd = process.cwd()
-    const cfg = loadConfig(cwd)
-    const provider = new AwsProvider('local')
-    console.log(`Deleting resources for app "${cfg.app}"...`)
-    await provider.destroyResources(cfg)
+    const stage = validStage(opts.stage)
+    const cfg = loadConfig(cwd, stage)
+    const provider = new AwsProvider(opts.target)
+    console.log(`Deleting ${opts.target} resources for app "${cfg.app}" (stage: ${stage})...`)
+    await provider.destroyResources(cfg, stage)
     console.log('Resources deleted.')
-    provider.stopLocalEmulator(cwd)
-    console.log('Floci stopped.')
+    // Only the local emulator is ours to stop; on --target aws there's nothing to stop.
+    if (opts.target === 'local') {
+      provider.stopLocalEmulator(cwd)
+      console.log('Floci stopped.')
+    }
   })
 
 program
@@ -151,4 +192,11 @@ program
     console.log('Floci resources wiped (all apps). Container still running.')
   })
 
-program.parseAsync(process.argv)
+program.parseAsync(process.argv).catch((e) => {
+  // ConfigError: friendly message, no stack (bad slsv.yml, not a slsv bug).
+  if (e instanceof ConfigError) {
+    console.error(`\n✗ ${e.message}\n`)
+    process.exit(1)
+  }
+  throw e
+})

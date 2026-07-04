@@ -6,7 +6,7 @@ import type { AppConfig } from './config.js'
 import type { Provider } from './providers/types.js'
 import { bundleHandler } from './bundle.js'
 
-export async function startDev(cfg: AppConfig, provider: Provider, cwd: string, apiUrl?: string) {
+export async function startDev(cfg: AppConfig, provider: Provider, cwd: string, stage = 'dev', apiUrl?: string) {
   if (cfg.frontend) {
     const frontendSrcDir = path.resolve(cwd, cfg.frontend.src)
     const frontendDir = existsSync(path.join(frontendSrcDir, 'package.json'))
@@ -30,7 +30,7 @@ export async function startDev(cfg: AppConfig, provider: Provider, cwd: string, 
   const srcDir = path.join(cwd, 'src')
 
   for (const name of Object.keys(cfg.functions)) {
-    provider.tailLogs(`${cfg.app}-${name}`, true).catch(() => {})
+    provider.tailLogs(`${cfg.app}-${stage}-${name}`, true).catch(() => {})
   }
 
   console.log(`\nWatching ${srcDir}...`)
@@ -38,7 +38,7 @@ export async function startDev(cfg: AppConfig, provider: Provider, cwd: string, 
   const watcher = chokidar.watch(srcDir, { ignoreInitial: true }).on('change', async () => {
     console.log('\nChange detected — rebundling...')
     for (const [name, fn] of Object.entries(cfg.functions!)) {
-      const fnName = `${cfg.app}-${name}`
+      const fnName = `${cfg.app}-${stage}-${name}`
       try {
         const { zip } = await bundleHandler(fn.handler, cwd)
         await provider.updateFunctionCode(fnName, zip)

@@ -2,6 +2,9 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
+// Injected by tsup at build time (see tsup.config.ts) — the SDK version this CLI ships with.
+declare const __SDK_VERSION__: string
+
 export type Template = 'minimal' | 'demo'
 export type Stack = 'backend' | 'frontend' | 'fullstack'
 
@@ -19,7 +22,7 @@ export function initScaffold(
     if (hasBackend) {
       mkdirSync(path.join(dir, 'src'), { recursive: true })
       mkdirSync(path.join(dir, 'test'), { recursive: true })
-      writeFileSync(path.join(dir, 'package.json'), PKG_JSON(name))
+      writeFileSync(path.join(dir, 'package.json'), PKG_JSON(name, dir))
       writeFileSync(path.join(dir, 'tsconfig.json'), TSCONFIG)
       writeFileSync(path.join(dir, '.env.example'), MINIMAL_ENV_EXAMPLE)
       writeFileSync(path.join(dir, 'src/api.ts'), MINIMAL_API_HANDLER)
@@ -65,7 +68,7 @@ function sdkDependency(dir: string) {
     path.dirname(fileURLToPath(import.meta.url)),
     '../../../packages/sdk',
   )
-  return existsSync(localSdk) ? `file:${path.relative(dir, localSdk)}` : '^0.1.0'
+  return existsSync(localSdk) ? `file:${path.relative(dir, localSdk)}` : `^${__SDK_VERSION__}`
 }
 
 function demoTemplateDir() {
@@ -167,7 +170,7 @@ export const handler = router([
 ])
 `
 
-const PKG_JSON = (name: string) =>
+const PKG_JSON = (name: string, dir: string) =>
   JSON.stringify(
     {
       name,
@@ -179,7 +182,9 @@ const PKG_JSON = (name: string) =>
         test: 'vitest run',
       },
       dependencies: {
-        '@slsv/sdk': '^0.1.0',
+        // file: link to the local SDK when scaffolding from a source checkout (dev);
+        // published version once @slsv/sdk is on npm. Same logic as the demo template.
+        '@slsv/sdk': sdkDependency(dir),
       },
       devDependencies: {
         typescript: '^5.4.0',
@@ -211,6 +216,8 @@ const TSCONFIG = JSON.stringify(
 const GITIGNORE = `node_modules/
 dist/
 .env
+.env.*
+!.env*.example
 .slsv/
 `
 

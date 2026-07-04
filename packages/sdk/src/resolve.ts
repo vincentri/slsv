@@ -5,11 +5,12 @@
 //   queue('emailQueue')   -> QUEUE_EMAILQUEUE
 //   storage('receipts')   -> BUCKET_RECEIPTS
 //   cache('session')      -> REDIS_SESSION
+//   secret('JWT_SECRET')  -> SECRET_JWT_SECRET   (value = the SM secret id, not the secret)
 //
 // Same env-var contract holds on every cloud — handler code never changes.
 
 export function resolve(
-  prefix: 'DATABASE' | 'QUEUE' | 'BUCKET' | 'REDIS',
+  prefix: 'DATABASE' | 'QUEUE' | 'BUCKET' | 'REDIS' | 'SECRET',
   logicalName: string,
 ): string {
   const key = `${prefix}_${logicalName.toUpperCase().replace(/-/g, '_')}`

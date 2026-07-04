@@ -1,0 +1,113 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { rmSync, mkdirSync, writeFileSync } from 'fs'
+import path from 'path'
+import os from 'os'
+import { loadConfig, ConfigError } from './config.js'
+
+// Exercises the `stages:` overlay: deep-merge, scalar override, and null-removal trigger swap.
+describe('loadConfig stage overlay', () => {
+  let tmp: string
+  const write = (yml: string) => writeFileSync(path.join(tmp, 'slsv.yml'), yml)
+
+  beforeEach(() => {
+    tmp = path.join(os.tmpdir(), `slsv-cfg-${Math.random().toString(36).slice(2)}`)
+    mkdirSync(tmp, { recursive: true })
+  })
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+
+  const base = `
+app: shop
+functions:
+  worker:
+    runtime: nodejs22
+    handler: ./src/worker.handler
+    timeout: 30
+    queue: { name: jobs }
+queues:
+  jobs: { type: sqs }
+stages:
+  prod:
+    functions:
+      worker:
+        timeout: 300
+  dev:
+    functions:
+      worker:
+        queue: null
+        event:
+          pattern:
+            source: ['orders']
+`
+
+  it('base (no stage block match) is unchanged', () => {
+    write(base)
+    const cfg = loadConfig(tmp, 'nonexistent')
+    expect(cfg.functions!.worker.timeout).toBe(30)
+    expect(cfg.functions!.worker.queue).toEqual({ name: 'jobs' })
+  })
+
+  it('prod overlay overrides only the scalar it names', () => {
+    write(base)
+    const cfg = loadConfig(tmp, 'prod')
+    expect(cfg.functions!.worker.timeout).toBe(300)
+    expect(cfg.functions!.worker.queue).toEqual({ name: 'jobs' }) // untouched
+  })
+
+  it('dev overlay swaps queue trigger for event via null-removal', () => {
+    write(base)
+    const cfg = loadConfig(tmp, 'dev')
+    expect(cfg.functions!.worker.queue).toBeUndefined() // removed by `queue: null`
+    expect(cfg.functions!.worker.event?.pattern).toEqual({ source: ['orders'] })
+    expect(cfg.functions!.worker.timeout).toBe(30) // inherited
+  })
+
+  it('the stages key never leaks into the validated config', () => {
+    write(base)
+    const cfg = loadConfig(tmp, 'prod') as Record<string, unknown>
+    expect(cfg.stages).toBeUndefined()
+  })
+})
+
+describe('loadConfig error UX', () => {
+  let tmp: string
+  const write = (yml: string) => writeFileSync(path.join(tmp, 'slsv.yml'), yml)
+
+  beforeEach(() => {
+    tmp = path.join(os.tmpdir(), `slsv-cfg-${Math.random().toString(36).slice(2)}`)
+    mkdirSync(tmp, { recursive: true })
+  })
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+
+  it('missing file throws ConfigError naming the cwd', () => {
+    expect(() => loadConfig(tmp, 'dev')).toThrow(ConfigError)
+    expect(() => loadConfig(tmp, 'dev')).toThrow(/No slsv.yml found/)
+  })
+
+  it('invalid YAML throws ConfigError', () => {
+    write('app: shop\n  functions: [unclosed')
+    expect(() => loadConfig(tmp, 'dev')).toThrow(ConfigError)
+    expect(() => loadConfig(tmp, 'dev')).toThrow(/not valid YAML/)
+  })
+
+  it('schema violation throws ConfigError with path-prefixed lines, not a raw zod dump', () => {
+    write(`
+app: shop
+functions:
+  api:
+    runtime: nodejs22
+    handler: ./src/api.handler
+    timeout: 9999
+`)
+    let err: unknown
+    try {
+      loadConfig(tmp, 'dev')
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(ConfigError)
+    const msg = (err as ConfigError).message
+    expect(msg).toMatch(/Invalid slsv\.yml/)
+    expect(msg).toMatch(/functions\.api\.timeout/) // path-prefixed
+    expect(msg).not.toMatch(/ZodError|\bat /) // no stack / zod class dump
+  })
+})

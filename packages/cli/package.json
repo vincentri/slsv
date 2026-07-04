@@ -1,7 +1,13 @@
 {
   "name": "slsv",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Simple local-AWS serverless framework",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincentri/slsv.git",
+    "directory": "packages/cli"
+  },
   "type": "module",
   "files": [
     "dist",

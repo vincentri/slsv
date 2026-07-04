@@ -17,6 +17,7 @@ import { makeDb } from './providers/aws/db.js'
 import { makeQueue } from './providers/aws/queue.js'
 import { makeStorage } from './providers/aws/storage.js'
 import { makeCache } from './providers/aws/cache.js'
+import { getSecret } from './providers/aws/secret.js'
 
 export type {
   DbClient,
@@ -32,7 +33,7 @@ export type {
 // slsv injects SLSV_PROVIDER at deploy time. Default 'aws'.
 // GCP/Azure providers register here once implemented — handler code never changes.
 const PROVIDERS: Record<string, Provider> = {
-  aws: { db: makeDb, queue: makeQueue, storage: makeStorage, cache: makeCache },
+  aws: { db: makeDb, queue: makeQueue, storage: makeStorage, cache: makeCache, secret: getSecret },
 }
 
 function provider(): Provider {
@@ -63,4 +64,13 @@ export function storage(name: string): StorageClient {
 /** Redis cache by logical name from slsv.yml */
 export function cache(name: string): CacheClient {
   return provider().cache(resolve('REDIS', name))
+}
+
+/**
+ * Secrets Manager value by logical name from slsv.yml `secrets:`.
+ * Fetched at runtime (never baked into the function env) and cached per container.
+ *   const jwt = await secret('JWT_SECRET')
+ */
+export function secret(name: string): Promise<string> {
+  return provider().secret(resolve('SECRET', name))
 }

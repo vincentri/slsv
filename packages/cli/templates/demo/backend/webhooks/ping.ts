@@ -1,8 +1,8 @@
-import { queue } from '@slsv/sdk'
+import { queue, secret } from '@slsv/sdk'
 
 export const handler = async (event: any) => {
-  const secret = event.headers?.['x-webhook-secret']
-  if (secret !== process.env.WEBHOOK_SECRET) return { statusCode: 401, body: 'Unauthorized' }
+  const provided = event.headers?.['x-webhook-secret']
+  if (provided !== (await secret('WEBHOOK_SECRET'))) return { statusCode: 401, body: 'Unauthorized' }
 
   const body = JSON.parse(event.body ?? '{}') as { code: string; url: string }
   await queue('clicks').send({ ...body, at: new Date().toISOString() })

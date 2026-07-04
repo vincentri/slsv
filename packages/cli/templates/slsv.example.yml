@@ -1,5 +1,9 @@
 # slsv.yml — full reference. Every knob shown. Copy, trim, ship.
 # All optional fields have sane defaults; minimal slsv.yml = just `app:` + one resource.
+#
+# Stages: `slsv deploy --stage prod` namespaces every resource as <app>-<stage>-<name>,
+# so dev/prod coexist. Per-stage secrets load from `.env.<stage>` (falls back to `.env`).
+# Default stage is `dev`. No per-stage yml block — same shape, different secrets/values.
 
 app: my-app
 
@@ -12,6 +16,10 @@ functions:
         path: /api/{proxy+}
       - method: GET
         path: /health
+    # timeout: 30                      # seconds, 1-900 (default 30)
+    # memory: 256                      # MB, 128-10240 (default 256)
+    # environment:                     # custom env vars (slsv bindings always win)
+    #   LOG_LEVEL: debug
 
   worker:
     runtime: nodejs22
@@ -22,6 +30,14 @@ functions:
     runtime: nodejs22
     handler: ./src/cron.handler
     cron: { schedule: '0 8 * * *' } # EventBridge — 5-field unix cron OR rate()
+
+  onOrder:
+    runtime: nodejs22
+    handler: ./src/on-order.handler
+    event: # EventBridge event-pattern — invoked when a matching event hits the default bus
+      pattern:
+        source: ['orders']
+        detail-type: ['order.placed']
 
 queues:
   jobs:
@@ -63,8 +79,16 @@ databases:
   #   type: mysql
   #   instanceClass: db.t4g.small
 
-  # byo:
-  #   type: external                   # BYO connection string from DATABASE_BYO env
+  # ── Hosted Postgres (Supabase / Neon / RDS you manage yourself) ──
+  # slsv only provisions dynamodb/postgres/mysql. For a DB you host elsewhere, don't put it
+  # here — put the connection string in `secrets:` (it's a password) and connect with your
+  # own driver (pg / Prisma / Drizzle / postgres.js):
+  #
+  #   secrets: [DATABASE_URL]                 # handler: const url = await secret('DATABASE_URL')
+  #
+  # .env:      DATABASE_URL=postgresql://postgres.xxxx:PW@aws-0-region.pooler.supabase.com:6543/postgres
+  # Use Supabase's TRANSACTION POOLER (port 6543), not direct :5432 — Lambda opens many
+  # short connections and would exhaust the direct limit. Per-stage: .env.prod = prod project.
 
 caches:
   session:
@@ -78,10 +102,36 @@ caches:
   #   nodes: 3
 
 secrets:
-  - JWT_SECRET                        # read from .env, injected into every function
+  # Names only. Values come from .env.<stage> (falls back to .env) and are stored in AWS
+  # Secrets Manager as <app>-<stage>-<NAME>. The VALUE is never put in the function env —
+  # fetch it at runtime:  const jwt = await secret('JWT_SECRET')   (from '@slsv/sdk').
+  # Per stage: .env = dev, .env.prod = prod, .env.staging = staging.
+  - JWT_SECRET
   - WEBHOOK_SECRET
 
 frontend:
   src: ./frontend/dist                # build output to serve
   build: npm --prefix frontend install && npm --prefix frontend run build # build cmd
   # cloudfront: true                  # CloudFront distribution on --target aws
+
+# ── Per-stage overrides (optional) ──────────────────────────────────────────
+# `stages.<name>` deep-merges over the base above for `--stage <name>`. Override ONLY
+# what differs; everything else is inherited. Objects merge, scalars/arrays replace,
+# and `key: null` REMOVES a base key (used below to swap a trigger). Keep blocks small —
+# dev/prod parity is the goal; overlays are for controlled differences, not a fork.
+#
+# stages:
+#   prod:
+#     functions:
+#       worker:
+#         timeout: 300               # prod worker needs longer; dev keeps its default
+#     frontend:
+#       cloudfront: true             # CDN only in prod
+#
+#   dev:
+#     functions:
+#       worker:
+#         queue: null                # drop the SQS trigger in dev...
+#         event:                     # ...and experiment with EventBridge instead
+#           pattern:
+#             source: ['orders']

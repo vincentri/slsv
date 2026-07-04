@@ -1,13 +1,19 @@
 import {
   SecretsManagerClient,
   CreateSecretCommand,
-  GetSecretValueCommand,
+  PutSecretValueCommand,
 } from '@aws-sdk/client-secrets-manager'
+import { envKey } from '../../env-key.js'
 
+// Stores each secret's value in Secrets Manager (stage-namespaced so dev/prod don't
+// collide) and injects only the SM *id* into functions as SECRET_<NAME>. The value is
+// NEVER put in the function env — handlers fetch it at runtime via @slsv/sdk `secret()`.
+// `.env.<stage>` is the source of truth: the value is upserted on every deploy.
 export async function ensureSecrets(
   sm: SecretsManagerClient,
   secretNames: string[],
   envValues: Record<string, string | undefined>,
+  prefix: string,
 ): Promise<Record<string, string>> {
   const result: Record<string, string> = {}
 
@@ -15,14 +21,15 @@ export async function ensureSecrets(
     const value = envValues[name]
     if (!value) continue
 
+    const secretId = `${prefix}-${name}`
     try {
-      const r = await sm.send(new GetSecretValueCommand({ SecretId: name }))
-      result[name] = r.SecretString ?? value
+      await sm.send(new CreateSecretCommand({ Name: secretId, SecretString: value }))
     } catch (e: any) {
-      if (e.name !== 'ResourceNotFoundException') throw e
-      await sm.send(new CreateSecretCommand({ Name: name, SecretString: value }))
-      result[name] = value
+      if (e.name !== 'ResourceExistsException') throw e
+      await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value }))
     }
+
+    result[envKey('SECRET', name)] = secretId
   }
 
   return result

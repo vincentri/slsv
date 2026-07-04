@@ -29,16 +29,24 @@ export async function deployFunctions(
     const overrides: Record<string, string> = { SLSV_PROVIDER: 'aws' }
     // ponytail: only inject AWS_ENDPOINT_URL locally; real AWS uses default endpoint resolution
     if (opts.localEndpoint) overrides.AWS_ENDPOINT_URL = opts.localEndpoint
+    // fn.environment first so slsv bindings + overrides win — user can't clobber a binding
     const environment = {
-      Variables: { ...envVars, ...overrides },
+      Variables: { ...fn.environment, ...envVars, ...overrides },
     }
+    const timeout = fn.timeout ?? 30
+    const memory = fn.memory ?? 256
 
     let fnArn: string
     try {
       const existing = await lambda.send(new GetFunctionCommand({ FunctionName: fnName }))
       await lambda.send(new UpdateFunctionCodeCommand({ FunctionName: fnName, ZipFile: zip }))
       await lambda.send(
-        new UpdateFunctionConfigurationCommand({ FunctionName: fnName, Environment: environment }),
+        new UpdateFunctionConfigurationCommand({
+          FunctionName: fnName,
+          Environment: environment,
+          Timeout: timeout,
+          MemorySize: memory,
+        }),
       )
       fnArn = existing.Configuration!.FunctionArn!
     } catch (e: any) {
@@ -51,8 +59,8 @@ export async function deployFunctions(
           Handler: handlerRef,
           Code: { ZipFile: zip },
           Environment: environment,
-          Timeout: 30,
-          MemorySize: 256,
+          Timeout: timeout,
+          MemorySize: memory,
         }),
       )
       fnArn = r.FunctionArn!

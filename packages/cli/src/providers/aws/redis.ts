@@ -1,13 +1,14 @@
 import {
-  CreateCacheClusterCommand,
-  DescribeCacheClustersCommand,
+  CreateReplicationGroupCommand,
+  DescribeReplicationGroupsCommand,
   type ElastiCacheClient,
 } from '@aws-sdk/client-elasticache'
 import { envKey } from '../../env-key.js'
 import type { AppConfig } from '../../config.js'
 
-// Each caches.<name> → its own ElastiCache Redis cluster (one port per cache).
-// Floci emulates ElastiCache: CreateCacheCluster spins up a real redis process
+// Each caches.<name> → its own ElastiCache Redis/Valkey replication group (one port each).
+// Redis/Valkey MUST use CreateReplicationGroup — CreateCacheCluster only supports memcached.
+// Floci emulates ElastiCache: CreateReplicationGroup spins up a real valkey process
 // (in its own container) and returns its endpoint (localhost:16379, 16380, ...).
 // Target-agnostic: the client endpoint decides where the API call goes.
 //
@@ -31,18 +32,19 @@ export async function ensureCacheClusters(
     if (!endpoint) {
       try {
         const r = await client.send(
-          new CreateCacheClusterCommand({
-            CacheClusterId: clusterId,
+          new CreateReplicationGroupCommand({
+            ReplicationGroupId: clusterId,
+            ReplicationGroupDescription: `slsv cache ${name}`,
             Engine: 'valkey',
             // ponytail: knobs apply on --target aws; floci runs single-instance regardless.
             CacheNodeType: cfg.nodeType ?? 'cache.t3.micro',
-            NumCacheNodes: cfg.nodes ?? 1,
+            NumCacheClusters: cfg.nodes ?? 1,
           }),
         )
-        endpoint = extractEndpoint(r.CacheCluster)
+        endpoint = extractEndpoint(r.ReplicationGroup)
       } catch (e: any) {
         // Already exists (prior deploy) — describe to recover its endpoint.
-        if (e.name !== 'CacheClusterAlreadyExists') throw e
+        if (e.name !== 'ReplicationGroupAlreadyExistsFault') throw e
         endpoint = await describeEndpoint(client, clusterId)
       }
     }
@@ -56,18 +58,15 @@ export async function ensureCacheClusters(
 
 async function describeEndpoint(client: ElastiCacheClient, clusterId: string) {
   const r = await client
-    .send(
-      new DescribeCacheClustersCommand({
-        CacheClusterId: clusterId,
-        ShowCacheNodeInfo: true,
-      }),
-    )
+    .send(new DescribeReplicationGroupsCommand({ ReplicationGroupId: clusterId }))
     .catch(() => null)
-  return r?.CacheClusters?.[0] ? extractEndpoint(r.CacheClusters[0]) : undefined
+  return r?.ReplicationGroups?.[0] ? extractEndpoint(r.ReplicationGroups[0]) : undefined
 }
 
-function extractEndpoint(cluster: any): { address: string; port: number } | undefined {
-  const node = cluster?.CacheNodes?.[0]?.Endpoint
-  if (!node?.Address || !node.Port) return undefined
-  return { address: node.Address, port: node.Port }
+function extractEndpoint(rg: any): { address: string; port: number } | undefined {
+  // Floci exposes it as ConfigurationEndpoint; real AWS (non-cluster) uses the node
+  // group's PrimaryEndpoint. Prefer whichever is present.
+  const ep = rg?.ConfigurationEndpoint ?? rg?.NodeGroups?.[0]?.PrimaryEndpoint
+  if (!ep?.Address || !ep.Port) return undefined
+  return { address: ep.Address, port: ep.Port }
 }
