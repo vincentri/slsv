@@ -45,6 +45,16 @@ functions:
         source: ['orders']
         detail-type: ['order.placed']
 
+api: # optional — HTTP API Gateway settings
+  # Origins allowed to call the API from a browser (CORS AllowOrigins). Omit this whole block
+  # → '*' (open; required when the S3-hosted frontend is a different origin). Set it to lock
+  # the API to your own site(s). Methods + headers stay '*'. Applied every deploy (drift-safe).
+  cors:
+    - https://myapp.com
+    - https://www.myapp.com
+  # Custom domain (api.myapp.com) is NOT yet supported by slsv — set it up manually in AWS
+  # (ACM cert + API Gateway custom domain name + DNS record), or use frontend.cloudfront.
+
 queues:
   jobs:
     type: sqs

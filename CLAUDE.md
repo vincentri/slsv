@@ -62,17 +62,32 @@ Lambda · API Gateway · SQS · EventBridge · DynamoDB · S3 · Secrets Manager
 
 ## Key architecture decisions
 
-### Provider abstraction
-
-`packages/cli/src/providers/types.ts` — `Provider` interface. `AwsProvider` is the only impl today. GCP later = new impl, zero user change.
-
 ### Cloud portability boundary = env vars
 
 slsv injects `DATABASE_<NAME>`, `QUEUE_<NAME>`, `BUCKET_<NAME>`, `REDIS_<NAME>` into every function at deploy time. Handler code resolves by logical name, never by ARN/URL directly.
 
 ### @slsv/sdk
 
-Handlers import `@slsv/sdk`, never raw `@aws-sdk/*`. `db('invoices')` → resolves `DATABASE_INVOICES` env → DynamoDBDocumentClient (or SQL connection). Same for `queue()`, `storage()`, `cache()`. Provider selected via `SLSV_PROVIDER` env (injected by CLI at deploy, default `aws`).
+Handlers import `@slsv/sdk`, never raw `@aws-sdk/*`. `db('invoices')` → resolves `DATABASE_INVOICES` env → DynamoDBDocumentClient. Same for `queue()`, `storage()`, `cache()`. `queue().send(body, { delaySeconds })` maps to the SQS `DelaySeconds` (0-900); ponytail: standard queues only — FIFO rejects per-message delay (set it on the queue).
+
+**DynamoDB and SQL are different data models, so different accessors.** `db(name)` is the
+DynamoDB KV client (get/put/query-by-partition — `DbClient` in `types.ts`). SQL databases
+(`type: postgres|mysql`) use **`sql(name, { schema? })`** (`providers/aws/sql.ts` →
+`makeSql`), which resolves the same `DATABASE_<NAME>` env — the CLI injects a `postgres://`
+/ `mysql://` **connection string** there for RDS dbs (vs a table name for dynamo) — sniffs
+the dialect from the URL scheme, and returns a **Drizzle** client (pg/`node-postgres` or
+`mysql2`), cached per container like `secret()`. Pass `{ schema }` (your drizzle table
+defs) for the typed relational API (`db.query.*`, typed inserts); omit it and the query
+builder (`db.select().from(t)`) + raw SQL (`db.execute(sql\`…\`)`, or drop to the pool via
+`db.$client`) still work. **No migrations** — `init_sql` owns the DDL; a drizzle `schema.ts`
+is the optional typed *mirror* of those tables, kept in sync by hand. Drizzle not Prisma:
+pure TS, bundles into the single `handler.js` (Prisma's query-engine binary would break
+esbuild's no-externals model). ponytail: both dialect drivers (`pg`+`mysql2`) bundled into
+every handler; return typed as `NodePgDatabase` for one signature (mysql structurally
+compatible for the query surface). Hosted/BYO SQL (Supabase/Neon) still has no `databases`
+type — conn string in `secrets:`, wire Drizzle yourself over `secret()`. Demo shows both
+styles: `backend/jobs/track-click.ts` (typed, `{ schema }`) and `daily-report.ts` (raw via
+`$client`).
 
 ### Multi-store (multiple instances of same type)
 
@@ -81,6 +96,23 @@ Each store block is a map. `caches: { session: ..., ratelimit: ... }` → `REDIS
 ### Caches locally
 
 One ElastiCache Redis/Valkey **replication group** per `caches.<name>`, provisioned via `CreateReplicationGroup` against Floci (`redis.ts`). NOT `CreateCacheCluster` — that only supports memcached; Redis/Valkey requires the replication-group API. `CreateReplicationGroup` passes `TransitEncryptionEnabled: false` (real AWS requires it explicit; keeps the plain `redis://` string valid). Teardown uses `DeleteReplicationGroup`.
+
+**Serverless mode (`caches.<name>.serverless: true`, aws-only):** opts into ElastiCache
+Serverless (`CreateServerlessCache` / `DescribeServerlessCaches` / teardown
+`DeleteServerlessCache`) instead of a node group — auto-scales, pay-per-use, no `nodeType`/
+`nodes`. **`--target local` ignores it**: the local branch (`ensureLocalCache`) runs *before*
+the serverless check and `continue`s, so a serverless-flagged cache runs as a node group on
+Floci — because Floci doesn't implement `CreateServerlessCache` (verified: returns
+`UnsupportedOperation`). Same skip-on-local stance as `provisionedConcurrency`/`nodeType`.
+Serverless is **TLS-only** (AWS forces transit encryption), so `ensureServerlessCache` returns
+a `rediss://` endpoint (vs the node path's plain `redis://`); the SDK's ioredis client enables
+TLS from the `rediss://` scheme with no change. Provisions asynchronously (~minutes) —
+`waitForServerlessEndpoint` polls until the endpoint populates, mirroring the node path's
+`waitForCacheEndpoint`. Destroy branches on `this.target === 'aws' && serverless` (local always
+`DeleteReplicationGroup`). ponytail: `slsv status` still lists caches via
+`DescribeReplicationGroups`, so serverless caches won't show there yet — add a
+`DescribeServerlessCaches` pass when status needs it. Remove the whole local-node-group
+fallback for serverless caches once Floci implements the serverless API.
 
 Endpoint resolution splits by target (`ensureCacheClusters(..., local)`):
 - **`--target aws`** — read from `DescribeReplicationGroups` → `ConfigurationEndpoint`, fallback `NodeGroups[0].PrimaryEndpoint` (`extractEndpoint`). Provisions **asynchronously (~5-10 min)** — endpoint isn't populated until `available`, so `redis.ts` polls (`waitForCacheEndpoint`) before reading it.
@@ -136,12 +168,33 @@ from `slsv.yml` actually tears it down — keeps the manifest the source of trut
 split: **Lambda functions + EventBridge rules are auto-pruned** (stateless, exact-named
 `<app>-<stage>-<fn>` / `<app>-<stage>-<fn>-evt`, the common rename/remove case — a dropped
 cron/event trigger would otherwise leave its rule firing, which is wrong behavior, not
-cosmetic). **Data stores (DynamoDB / S3 / RDS) are report-only** — an orphan table/bucket/db
-is warned about, never silently deleted (would lose data); use `slsv destroy` to remove
-intentionally. All `List*` calls are drained via the `paginate()` helper (`index.ts`), so
-prune is correct past one page. ponytail ceilings: dangling API-GW integrations / SQS
-event-source-mappings / log groups of a pruned function are left (inert, harmless) — not
-yet swept.
+cosmetic). **Data stores (DynamoDB / S3 buckets / RDS) auto-delete by default** (`autoRemove`,
+top-level, default **true**) — an orphan table/bucket/db dropped from the yml is DELETED on the
+next deploy (via `handleOrphan` → `DeleteTableCommand` / `emptyAndDeleteBucket` /
+`DeleteDBInstanceCommand` with `SkipFinalSnapshot`), so the manifest is the full source of
+truth. This is **destructive** — the store takes its data with it. Set **`autoRemove: false`**
+to restore the safe behavior: orphans are only reported (warned) and left until `slsv destroy`.
+RDS orphan delete always skips the final snapshot (the removed yml no longer carries
+`skipFinalSnapshot`). **Exception — the frontend (S3 hosting bucket `<app>-<stage>-frontend` +
+CloudFront distribution) is auto-torn-down** when `frontend:` is dropped from the yml: it's a
+slsv-managed BUILD ARTIFACT (created by deployFrontend, not declared under `buckets:`, holds
+only the last build output, re-created every deploy), so it prunes like a stateless orphan,
+NOT report-only — via `emptyAndDeleteBucket` (shared with destroy) + `destroyDistribution`
+(idempotent by Comment; ~15-20 min but only on the one redeploy that removes frontend). While
+a frontend IS configured, the bucket is excluded from the orphan scan. (Bug history: the
+exclusion name was built as `${lcPrefix}-frontend` with a double dash — `bb-dev--frontend` vs
+the real `bb-dev-frontend` — so the frontend bucket was warned as an orphan on every deploy;
+`lcPrefix` already carries the trailing `-`.) All `List*` calls are drained via the
+`paginate()` helper (`index.ts`), so
+prune is correct past one page. **Pruned Lambda cleanup:** the `DeleteFunction` error is NOT
+swallowed — an already-gone fn is a no-op, but a real failure (IAM denial, throttle, stuck fn)
+is **surfaced** (`⚠ could not prune …`) and skipped, and `pruned function` only prints on
+actual success (before: `.catch(() => {})` hid every failure yet still logged "pruned" — the
+fn survived while the log claimed removal). The pruned fn's **log group is deleted** too (was
+left before), and on `--target local` its **Floci container is swept** (`docker rm`, same
+container-lifecycle desync destroy handles — else Floci keeps running the removed fn and a
+pruned cron/queue trigger still fires). ponytail ceilings: dangling API-GW integrations / SQS
+event-source-mappings of a pruned function are still left (inert, harmless) — not yet swept.
 
 ### IAM exec role
 
@@ -175,7 +228,14 @@ frontend resolves its API base as `VITE_API_URL || VITE_SLSV_API_URL || ''` (`fr
 api.ts` helper): a **user-set `VITE_API_URL` wins** (custom domain), else slsv's injected URL,
 else `''` = relative (local `slsv dev` proxies `/api` → backend). The HTTP API gets a
 permissive **CORS** config (`apigw.ts`, `AllowOrigins/Methods/Headers: ['*']`) so the S3
-origin can call it. Existing hand-written frontends must adopt the same `api()` base to work
+origin can call it. **`api.cors` in slsv.yml overrides `AllowOrigins`** (an array of allowed
+origins, e.g. `['https://myapp.com']`) to lock the API down; omit → `['*']` (the open default,
+needed for the two-origin S3-frontend setup). Methods/headers stay `*` — origin is the axis
+worth restricting. Threaded `deploy.ts (cfg.api?.cors) → wireHttp → ensureApiGateway →
+ensureHttpApi`. Unlike CloudFront (create-only), CORS is **drift-corrected every deploy** via
+`UpdateApiCommand`, so adding/removing `api.cors` takes effect on redeploy (verified on Floci:
+set two origins → AllowOrigins = those two; remove → back to `*`). Existing hand-written
+frontends must adopt the same `api()` base to work
 on aws. Opt in to `frontend.cloudfront: true` for the single-domain HTTPS upgrade (below) —
 without it this two-domain + CORS + HTTP-only setup is what runs.
 
@@ -184,8 +244,14 @@ without it this two-domain + CORS + HTTP-only setup is what runs.
 S3 static-website endpoints are HTTP-only by design (the HTTPS REST endpoint doesn't support
 index.html/SPA fallback), so opting in provisions one CloudFront distribution with two origins:
 S3 website endpoint (custom origin, HTTP to origin) for `/*`, and the API Gateway domain for
-`/api/*` (caching disabled, all methods, forwards query/headers/cookies via legacy
-`ForwardedValues`). `CustomErrorResponses` (403/404 → `/index.html`, 200) handle SPA routing.
+`/api/*` (all methods, AWS-managed policies `CachingDisabled` + **`AllViewerExceptHostHeader`** —
+NOT legacy `ForwardedValues`/`Headers: ['*']`, which forwarded the viewer `Host` (the CloudFront
+domain) to the HTTP API origin and made API Gateway **403** every `/api/*` request; the managed
+policy forwards everything **except Host** so API GW sees its own `execute-api` host). Managed
+policy IDs are global constants. `CustomErrorResponses` (403/404 → `/index.html`, 200) handle SPA
+routing. ponytail: CloudFront is create-only (idempotent by `Comment`) — it does NOT update an
+existing distribution, so a config fix like this needs `slsv destroy --target aws` + redeploy (or
+a manual console edit) to take effect on already-deployed distributions.
 Because `/api/*` becomes same-origin under the CloudFront domain, `deployFrontendAws` skips the
 `VITE_SLSV_API_URL` injection in this mode (relative `/api` just works — no CORS needed either).
 Idempotent via `ListDistributions` + find-by-`Comment` (`slsv:<appName>`), no id tracked.
@@ -197,24 +263,39 @@ kept (not OAC-private) since it's the existing setup. Deploy and destroy each ta
 `destroyDistribution`). CloudFront's client always targets `us-east-1` (global service),
 regardless of the app's deploy region (`clients.ts`).
 
-### slsv status
-
-`slsv status [--stage] [--target local|aws]` (`AwsProvider.status`) lists what's actually
-deployed for `<app>-<stage>` — functions/tables/queues/buckets/databases/caches, grouped
-with counts. Read-only; reuses `paginate()` + the `<app>-<stage>-` prefix filter.
-
-`slsv destroy [--stage] [--target local|aws]` tears the stack down — including the HTTP API
-(`deleteHttpApi`, cascades its routes/integrations/stages), the per-app+stage IAM role, and
-the **frontend hosting bucket** (`<app>-<stage>-frontend`, created by deployFrontend not
-declared under `buckets:` — so destroy adds it explicitly). RDS delete uses
-`SkipFinalSnapshot` (per-db `skipFinalSnapshot`, default true — no snapshot).
+`slsv destroy [--stage] [--target local|aws]` tears the stack down. **Discovery-based, NOT
+yml-driven:** destroy ENUMERATES every resource deployed under the `<app>-<stage>-` prefix
+(`ListFunctions`/`ListTables`/`ListBuckets`/`ListQueues`/`ListSecrets`/
+`DescribeReplicationGroups`+`DescribeServerlessCaches`/`DescribeDBInstances`, all `paginate()`d)
+and deletes what it finds — so a resource the user already **removed from slsv.yml** (yml drifted
+from AWS) is STILL torn down. (Before: destroy iterated `cfg.functions`/`cfg.databases`/… — a
+service dropped from the yml was invisible to destroy and survived on real AWS: "my lambda and
+dynamodb not removed".) Verified end-to-end on Floci: deploy → remove a fn+table+secret from the
+yml → `destroy` still deletes `<app>-<stage>-{fn,table,secret}`, while sibling apps
+(`fx-dev-*`, `aa3-dev-*`) are untouched. Includes the HTTP API (`deleteHttpApi`, cascades
+routes/integrations/stages), the per-app+stage IAM role (fixed name `<app>-<stage>-exec`),
+CloudFront (found by `Comment`), and the **frontend hosting bucket** (`<app>-<stage>-frontend`,
+swept by the S3 prefix scan — no longer a yml special-case). RDS discovery has no yml so it
+**always `SkipFinalSnapshot: true`** (a drifted destroy can't know to snapshot; use
+`skipFinalSnapshot: false` + destroy while it's still in the yml if you need one).
+ponytail: **prefix match, not tag match** — a sibling stack whose name extends this prefix
+(`myapp-dev-` vs stage `dev-2` → `myapp-dev-2-*`) could be swept; same ceiling reconcile's prune
+accepts. Switch to the Resource Groups Tagging API (`slsv:app`+`slsv:stage`) if stacks ever share
+a name prefix.
 **`--target` matters:** without it (default `local`) destroy hits Floci — so after a real
 deploy you MUST `slsv destroy --target aws`, or the real (billable) RDS/ElastiCache keep
 running. Only `--target local` stops the emulator afterward. **Idempotent:** every delete
-swallows "already gone" via one pattern (`/(NotFound|NoSuch|DoesNotExist|NonExistent)/i`) —
-services name their not-found errors differently (`ResourceNotFoundException`, `NoSuchBucket`,
-`QueueDoesNotExist`, `ReplicationGroupNotFoundFault`, ...), so a partial or re-run destroy
-never fails.
+swallows "already gone" via one pattern (`GONE` = `/(NotFound|NoSuch|DoesNotExist|NonExistent)/i`,
+module-level, shared with reconcile) — services name their not-found errors differently
+(`ResourceNotFoundException`, `NoSuchBucket`, `QueueDoesNotExist`,
+`ReplicationGroupNotFoundFault`, ...), so a partial or re-run destroy never fails.
+**Step-tracked + resilient:** each delete runs through a `step(label, fn)` wrapper that prints
+progress like deploy (`    Lambda api … ✓` / `· already gone` / `✗ <err>`); an already-gone
+resource is success, and a REAL failure is **recorded and the sweep CONTINUES** (before: one
+non-`GONE` error, e.g. RDS `InvalidDBInstanceState`, threw and skipped every later step —
+CloudFront/IAM/EventBridge/container sweep never ran, leaving billable resources behind). At
+the end, any failures are listed and the command **throws (exits non-zero)** so a partial
+teardown is never silently reported as done.
 
 **One API Gateway per stage** (named `<app>-<stage>`), NOT one shared API split by internal
 stages — keeps each stage's API fully isolated like every other resource (deploying prod
@@ -261,6 +342,7 @@ functions:
     reservedConcurrency?: 10 # PutFunctionConcurrency (separate call); 0 throttles all
     provisionedConcurrency?: 2 # warm instances (--target aws only); publishes a version + `live` alias, triggers point at the alias
     environment?: { KEY: value } # custom env; slsv bindings (DATABASE_*, etc) always win
+api: { cors?: [origin, ...] } # optional; HTTP API CORS AllowOrigins (omit → '*'). Methods/headers always '*'. Custom domain NOT yet supported (manual: ACM + API GW custom domain + DNS)
 queues: { name: { type: sqs, fifo?: bool, visibilityTimeout?: secs, dlq?: name } }
 buckets: {
   name: {}
@@ -269,10 +351,11 @@ buckets: {
   #   cors: [origin, ...] # browser PUT/GET cross-origin (presigned URLs); pair with publicRead when allowing GET
 }
 databases: { name: { type: dynamodb|postgres|mysql, ... } } # dynamodb: partitionKey, sortKey?, gsi? — postgres/mysql: instanceClass?, storage?, multiAz?, name?, init_sql?, skipFinalSnapshot? (default true — destroy takes no snapshot). All provisioned via their APIs. Hosted/BYO DB → put its URL in secrets:, not here
-caches: { name: { type: redis|valkey, nodeType?, nodes? } } # both types provision valkey under the hood; knobs apply on --target aws
+caches: { name: { type: redis|valkey, nodeType?, nodes?, serverless? } } # both types provision valkey under the hood; knobs apply on --target aws. serverless: true → ElastiCache Serverless on aws (rediss://, auto-scale); ignored locally (node group — Floci lacks the serverless API)
 secrets: [ENV_VAR_NAME]
 tags: { KEY: value } # optional; custom tags added to every resource (on top of slsv:* tags)
 logRetentionDays: 14 # optional; CloudWatch log retention (default 14, 0 = never). Must be a CloudWatch-allowed value; applied every deploy
+autoRemove: true # optional (default true); on deploy, delete data stores (DynamoDB/S3/RDS) dropped from the yml — destructive. false = report-only, remove via `slsv destroy`
 stages: { <name>: { <partial-config> } } # optional; deep-merged over base for --stage <name> (null removes a key)
 ```
 
@@ -282,6 +365,11 @@ stages: { <name>: { <partial-config> } } # optional; deep-merged over base for -
 - `slsv init <name>` → skip prompt
 - `slsv init --demo` → full demo (HTTP + webhook + SQS job + cron)
 - Demo template uses `paymentWebhook` (x-webhook-secret header, no Stripe). `.env.example` works as-is.
+- **pnpm-only.** slsv apps use **pnpm** exclusively — the hint, scaffolds, `slsv dev`, and the frontend `build:` command all assume pnpm. Mixing npm/yarn breaks: running `npm install` over a pnpm `node_modules` throws `ERESOLVE`.
+- **pnpm build-script gate.** pnpm 10+ blocks native build scripts by default and **exits non-zero** on any ignored build → `ERR_PNPM_IGNORED_BUILDS`, breaking `&&` chains. esbuild is a build-script dep at BOTH the app root (via the `@slsv/sdk` file:-link toolchain) and the frontend (via vite). **pnpm 11 silently ignores the `onlyBuiltDependencies` allowlist from a config file** (also ignores `.npmrc`/env/CLI-flag variants) — the *only* setting it honors from a file is `dangerouslyAllowAllBuilds: true` (camelCase) in `pnpm-workspace.yaml`. So scaffolds ship that file at **app root + `frontend/`** (static in demo; `PNPM_WORKSPACE` const written at both in `init.ts` minimal). Trade-off: allows all deps' postinstalls (fine for a trusted dev scaffold). Verified end-to-end on pnpm 11.5.2.
+- The `Next:` hint is hardcoded pnpm: `pnpm install` at root **and** `frontend/`, then `slsv dev`.
+- **Frontend `build:`** (both templates) is `cd frontend && pnpm install && pnpm run build` — pnpm install is exit-0 via the shipped `dangerouslyAllowAllBuilds` file, and it builds to `frontend/dist` (which `frontend.src` points at — deploying the *build output*, not raw source, or the browser gets raw TS → blank page).
+- **`slsv dev` frontend runner (`dev.ts`)**: `ensureFrontendDeps()` writes the `dangerouslyAllowAllBuilds` `pnpm-workspace.yaml` if missing (fixes apps scaffolded before it shipped) + `pnpm install`s if `node_modules` is absent, then spawns `pnpm run dev`.
 - `slsv init --yes` → headless/CI (name = folder name)
 
 **SDK dependency in scaffolds:** both templates set `@slsv/sdk` via `sdkDependency(dir)` in
@@ -296,17 +384,48 @@ into the Lambda, but the app's `npm install`/typecheck needs the dep resolvable.
 | File                                          | Purpose                                                                                                                                                                                          |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `packages/cli/src/config.ts`                  | zod schema for slsv.yml                                                                                                                                                                          |
-| `packages/cli/src/providers/types.ts`         | Provider interface                                                                                                                                                                               |
-| `packages/cli/src/providers/aws/index.ts`     | AwsProvider impl                                                                                                                                                                                 |
+| `packages/cli/src/providers/aws/index.ts`     | AwsProvider — deploy + destroy + reconcile                                                                                                                                                      |
 | `packages/cli/src/providers/aws/index.ts` | Floci endpoint health check                                                                                                                                                                 |
 | `packages/cli/src/providers/aws/functions.ts` | esbuild bundle → zip → Lambda deploy                                                                                                                                                             |
 | `packages/cli/src/deploy.ts`                  | orchestration order                                                                                                                                                                              |
+| `packages/cli/src/lint.ts`                    | `lintApp` — preflight: slsv.yml ↔ code (handler/export exists, SDK names declared, triggers resolve)                                                                                             |
 | `packages/cli/src/init.ts`                    | scaffold templates (minimal + demo)                                                                                                                                                              |
 | `packages/cli/src/env-key.ts`                 | shared env var name util (`DATABASE_FOO`, `QUEUE_BAR`, etc.)                                                                                                                                        |
 | `packages/cli/src/providers/aws/iam.ts`       | `ensureExecRole`/`deleteExecRole` — per-app+stage role + scoped inline `slsv-data` policy                                                                                                        |
 | `packages/cli/src/providers/aws/secrets.ts`   | `ensureSecrets` — upsert to Secrets Manager, inject `SECRET_<NAME>=<id>` (never the value)                                                                                                       |
-| `packages/sdk/src/index.ts`                   | db/queue/storage/cache/secret exports                                                                                                                                                                   |
+| `packages/sdk/src/index.ts`                   | db/queue/storage/cache/secret/sql exports                                                                                                                                                               |
+| `packages/sdk/src/providers/aws/sql.ts`       | `makeSql` — postgres/mysql conn string → Drizzle client (dialect sniff, per-container cache)                                                                                                     |
 | `packages/sdk/src/resolve.ts`                 | logical name → env var                                                                                                                                                                           |
+
+### Preflight lint (dev + deploy)
+
+`deploy()` calls **`lintApp(cfg, cwd)`** (`lint.ts`) before any provisioning — so both `slsv
+dev` and `slsv deploy` (they share `deploy()`) fail fast when slsv.yml doesn't match the code,
+with a clear message instead of a cryptic esbuild crash or a runtime 500. Three checks:
+1. **Handler + export** — each `functions.<fn>.handler` (`file.export`) resolves to an existing
+   `<file>.ts` (same path `bundle.ts` compiles) that actually exports the named symbol (regex,
+   covers `export const/function/{ x as handler }`).
+2. **SDK names ↔ yml** — scans project `.ts` (skips node_modules/dist/frontend/tests) for
+   `@slsv/sdk` accessor calls and cross-checks the logical name: `db('x')`→dynamodb db, `sql`→
+   postgres/mysql db, `queue`/`cache`/`storage`→queues/caches/buckets, `secret`→secrets. Only
+   counts names **imported from `@slsv/sdk`** (per-file, alias-aware) so a same-named local
+   method like `this.queue()` isn't a false positive. Undeclared name = error; declared-but-
+   never-referenced = warning.
+3. **Triggers** — a function's `queue: { name }` trigger and a queue's `dlq:` both must name a
+   declared queue.
+Errors throw `ConfigError` (printed sans stack, exit 1); warnings print and continue. ponytail:
+regex not AST — `import * as slsv`, multi-line SDK imports, and `export * from` re-exports slip
+through; extend if a real app hits them. Tested in `lint.test.ts`; the demo template lints clean
+(dropped the unused `ADMIN_KEY` secret to keep it warning-free on fresh scaffold).
+
+### CLI flag hardening (`cli.ts`)
+
+`deploy`/`destroy` set **`.allowExcessArguments(false)`** + **`--target` via `new
+Option(...).choices(['local','aws'])`**. Kills a silent footgun: `slsv destroy -- target aws`
+(space after `--`) made commander treat `target aws` as ignored operands and fall back to
+`--target local`, so a "real AWS" destroy quietly hit Floci and left the billable stack running.
+Now it errors (`too many arguments`); a bad value like `--target awss` (which `makeClients`
+would otherwise treat as aws) is rejected too.
 
 ## Conventions
 
@@ -315,3 +434,15 @@ into the Lambda, but the app's `npm install`/typecheck needs the dep resolvable.
 - SQL: postgres/mysql provisioned via the RDS API (init_sql runs once on first creation); hosted/BYO DB → connection string in `secrets:`, connect with your own driver/ORM
 - Mark deliberate shortcuts with `// ponytail:` comment + ceiling + upgrade path
 - esbuild bundles handlers to CJS with `bundle: true` and NO externals — `@slsv/sdk` AND `@aws-sdk/*` are inlined into one self-contained `handler.js` (the Floci/Lambda base image doesn't ship `lib-dynamodb`, so bundling everything is deliberate: bigger zip, always works). `@slsv/sdk` is never published/deployed separately; the `file:` link is bundle-time only.
+
+## Cleanup rule (before commit)
+
+No dead code lands in this repo. Before any commit/PR, scan:
+
+- **Dead imports/fields** — grep every imported symbol + every private field; if nothing reads it, delete it.
+- **Dead config flags** — if a field is accepted by the zod schema but no code reads it, the flag is a lie. Delete it (or honor it — never silently ignore).
+- **YAGNI abstractions** — interfaces with one impl, options bags nothing passes, factory wrappers around one function, helper params documented as "for future callers". Delete until a second caller exists.
+- **Single-call-site helpers** — a `withRoleRetry`-style helper used once is fine, but if the function body fits in the call site, inline it.
+- **Misleading config** — a knob users will set expecting behavior is worse than no knob. If you can't honor it, drop the field.
+
+Reference docs (e.g. `packages/cli/templates/slsv.example.yml`) are exempt — they're docs, not code.

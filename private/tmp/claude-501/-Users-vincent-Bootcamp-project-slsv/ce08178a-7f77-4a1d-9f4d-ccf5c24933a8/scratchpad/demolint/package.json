@@ -1,0 +1,19 @@
+{
+  "name": "/private/tmp/claude-501/-Users-vincent-Bootcamp-project-slsv/ce08178a-7f77-4a1d-9f4d-ccf5c24933a8/scratchpad/demolint",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@slsv/sdk": "file:../../../../../../../packages/sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}

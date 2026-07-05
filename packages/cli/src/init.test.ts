@@ -20,7 +20,7 @@ describe('initScaffold', () => {
     const yml = readFileSync(path.join(tmp, 'myapp', 'slsv.yml'), 'utf-8')
     expect(yml).toMatch(/app: myapp/)
     expect(yml).toMatch(/functions:/)
-    expect(existsSync(path.join(tmp, 'myapp', 'src', 'api.ts'))).toBe(true)
+    expect(existsSync(path.join(tmp, 'myapp', 'backend', 'api.ts'))).toBe(true)
   })
 
   it('writes slsv.yml for frontend stack without functions', () => {

@@ -61,8 +61,7 @@ caches:
 
 secrets:
   - WEBHOOK_SECRET
-  - ADMIN_KEY
 
 frontend:
   src: ./frontend/dist
-  build: npm --prefix frontend install && npm --prefix frontend run build
+  build: cd frontend && pnpm install && pnpm run build

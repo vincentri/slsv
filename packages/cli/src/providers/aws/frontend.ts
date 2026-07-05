@@ -24,6 +24,7 @@ import { execSync } from 'child_process'
 import { createReadStream, readdirSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, relative, resolve } from 'node:path'
 import { asTagArray } from './tags.js'
+import { paginate } from './index.js'
 import type { FrontendDef } from '../../config.js'
 
 const MIME: Record<string, string> = {
@@ -200,7 +201,12 @@ async function ensureDistribution(
   tags: Record<string, string>,
 ): Promise<string> {
   const comment = `slsv:${appName}`
-  const existing = await paginateDistributions(cf)
+  const existing = await paginate<DistributionSummary>((Marker) =>
+    cf.send(new ListDistributionsCommand({ Marker })).then((r) => ({
+      items: r.DistributionList?.Items ?? [],
+      next: r.DistributionList?.IsTruncated ? r.DistributionList?.NextMarker : undefined,
+    })),
+  )
   const found = existing.find((d) => d.Comment === comment)
   if (found) return `https://${found.DomainName}`
 
@@ -270,14 +276,12 @@ async function ensureDistribution(
                     Items: ['GET', 'HEAD', 'OPTIONS', 'PUT', 'PATCH', 'POST', 'DELETE'],
                     CachedMethods: { Quantity: 2, Items: ['GET', 'HEAD'] },
                   },
-                  ForwardedValues: {
-                    QueryString: true,
-                    Cookies: { Forward: 'all' },
-                    Headers: { Quantity: 1, Items: ['*'] },
-                  },
-                  MinTTL: 0,
-                  DefaultTTL: 0,
-                  MaxTTL: 0,
+                  // AWS-managed policies (can't be combined with ForwardedValues): CachingDisabled
+                  // + AllViewerExceptHostHeader — forwards all query/headers/cookies EXCEPT Host.
+                  // Forwarding the viewer Host (the CloudFront domain) to an HTTP API origin makes
+                  // API Gateway 403 — it routes by its own execute-api Host. IDs are global/constant.
+                  CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad', // CachingDisabled
+                  OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac', // AllViewerExceptHostHeader
                 },
               ],
             }
@@ -311,21 +315,16 @@ async function ensureDistribution(
   return `https://${res.Distribution!.DomainName}`
 }
 
-async function paginateDistributions(cf: CloudFrontClient): Promise<DistributionSummary[]> {
-  const out: DistributionSummary[] = []
-  let marker: string | undefined
-  do {
-    const res = await cf.send(new ListDistributionsCommand({ Marker: marker }))
-    out.push(...(res.DistributionList?.Items ?? []))
-    marker = res.DistributionList?.IsTruncated ? res.DistributionList?.NextMarker : undefined
-  } while (marker)
-  return out
-}
-
 // ponytail: disable→wait→delete is ~15-20 min total; logs progress so destroy doesn't look hung.
 export async function destroyDistribution(cf: CloudFrontClient, appName: string) {
   const comment = `slsv:${appName}`
-  const found = (await paginateDistributions(cf)).find((d) => d.Comment === comment)
+  const items = await paginate<DistributionSummary>((Marker) =>
+    cf.send(new ListDistributionsCommand({ Marker })).then((r) => ({
+      items: r.DistributionList?.Items ?? [],
+      next: r.DistributionList?.IsTruncated ? r.DistributionList?.NextMarker : undefined,
+    })),
+  )
+  const found = items.find((d) => d.Comment === comment)
   if (!found) return
 
   const { DistributionConfig, ETag } = await cf.send(

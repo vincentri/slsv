@@ -170,7 +170,7 @@ buckets:
 
 `publicRead` + `cors` can be combined, but only do that for assets you actually want public. Pair `cors:` with `putSignedUrl()`/`getSignedUrl()` in the SDK — without those, CORS is half a feature.
 
-A working example lives at [`examples/bucket-app/`](./examples/bucket-app/README.md) — three buckets, three endpoints covering each pattern.
+The demo template (`slsv init --demo`) covers each pattern end to end.
 
 ---
 
@@ -191,7 +191,8 @@ await queue('jobs').send({ userId: '123' })
 
 // S3
 await storage('uploads').put('file.txt', 'hello')
-await storage('uploads').getText('file.txt')
+const bytes = await storage('uploads').get('file.txt')
+const text = bytes ? new TextDecoder().decode(bytes) : undefined
 // Presigned URLs — pair with `cors:` on the bucket so the browser can PUT/GET directly.
 const putUrl = await storage('user-uploads').putSignedUrl('avatars/1.jpg', {
   expiresIn: 60,
@@ -225,7 +226,7 @@ pnpm --filter slsv build:link  # rebuild + re-link global binary
 ### After editing `packages/sdk/`
 
 ```sh
-pnpm --filter @slsv/sdk build  # rebuild SDK (examples pick up dist/)
+pnpm --filter @slsv/sdk build  # rebuild SDK (scaffolds pick up dist/)
 ```
 
 ### Build + test everything
@@ -258,17 +259,12 @@ packages/
       bundle.ts        # esbuild handler → zip
       dev.ts           # chokidar hot-reload loop
       providers/
-        types.ts       # Provider interface
-        aws/           # AwsProvider (Floci + real AWS)
+        aws/           # AwsProvider (deploy + destroy + reconcile)
   sdk/         # @slsv/sdk — import this in your handlers
     src/
       index.ts         # db / queue / storage / cache exports
       resolve.ts       # logical name → env var (DATABASE_X, QUEUE_X, ...)
       providers/aws/   # DynamoDB, SQS, S3, Valkey impls
-
-examples/
-  invoice-app/ # reference app — always must work with slsv dev
-  bucket-app/  # three S3 patterns: private + public-read + CORS uploads
 ```
 
 ---

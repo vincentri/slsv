@@ -32,7 +32,7 @@ export interface ReceivedMessage {
 }
 
 export interface QueueClient {
-  send(body: any): Promise<void>
+  send(body: any, opts?: { delaySeconds?: number }): Promise<void>
   sendBatch(bodies: any[]): Promise<void>
   receive(opts?: { max?: number; waitSeconds?: number }): Promise<ReceivedMessage[]>
   delete(receiptHandle: string): Promise<void>
@@ -41,7 +41,6 @@ export interface QueueClient {
 export interface StorageClient {
   put(key: string, body: string | Uint8Array, contentType?: string): Promise<void>
   get(key: string): Promise<Uint8Array | undefined>
-  getText(key: string): Promise<string | undefined>
   list(prefix?: string): Promise<string[]>
   delete(key: string): Promise<void>
   // Browser fetches/uploads directly to S3 using a time-limited URL.
@@ -56,12 +55,4 @@ export interface CacheClient {
   del(key: string): Promise<void>
   incr(key: string): Promise<number>
   exists(key: string): Promise<boolean>
-}
-
-export interface Provider {
-  db(physicalName: string): DbClient
-  queue(physicalUrlOrName: string): QueueClient
-  storage(physicalName: string): StorageClient
-  cache(redisUrl: string): CacheClient
-  secret(secretId: string): Promise<string>
 }

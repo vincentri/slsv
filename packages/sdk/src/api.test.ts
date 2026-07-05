@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { json, redirect, request, router, text } from './api.js'
+import { json, redirect, request, router } from './api.js'
 
 describe('api helpers', () => {
   it('normalizes HTTP API v2 events', () => {
@@ -60,7 +60,6 @@ describe('api helpers', () => {
 
   it('builds common responses', () => {
     expect(json({ ok: true }).headers['content-type']).toBe('application/json')
-    expect(text('ok').headers['content-type']).toBe('text/plain; charset=utf-8')
     expect(redirect('/login').headers.location).toBe('/login')
   })
 })

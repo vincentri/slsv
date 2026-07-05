@@ -44,10 +44,6 @@ export type Route<TBody = unknown> = {
   handler: ApiHandler<TBody>
 }
 
-export type RouterOptions = {
-  onError?: (error: unknown, req: ApiRequest) => ApiResponse | Promise<ApiResponse>
-}
-
 export function request<TBody = unknown>(
   event: LambdaEvent,
   routePath?: string,
@@ -73,7 +69,7 @@ export function request<TBody = unknown>(
   }
 }
 
-export function router(routes: Route[], options: RouterOptions = {}) {
+export function router(routes: Route[]) {
   return async (event: LambdaEvent): Promise<ApiResponse> => {
     const path = event.rawPath ?? event.path ?? event.requestContext?.http?.path ?? '/'
     const method = (
@@ -86,13 +82,11 @@ export function router(routes: Route[], options: RouterOptions = {}) {
       if (!methodMatches(route.method, method)) continue
       if (!matchesPath(route.path, path)) continue
 
-      let req: ApiRequest | undefined
       try {
-        req = request(event, route.path)
+        const req = request(event, route.path)
         return await route.handler(req)
       } catch (error) {
-        if (isInvalidJsonError(error)) return json({ error: 'Invalid JSON body' }, 400)
-        if (options.onError && req) return options.onError(error, req)
+        if (error instanceof InvalidJsonError) return json({ error: 'Invalid JSON body' }, 400)
         return json({ error: 'Internal Server Error' }, 500)
       }
     }
@@ -109,17 +103,6 @@ export function json(body: unknown, statusCode = 200, headers: Record<string, st
       ...headers,
     },
     body: JSON.stringify(body),
-  }
-}
-
-export function text(body: string, statusCode = 200, headers: Record<string, string> = {}): ApiResponse {
-  return {
-    statusCode,
-    headers: {
-      'content-type': 'text/plain; charset=utf-8',
-      ...headers,
-    },
-    body,
   }
 }
 
@@ -161,17 +144,20 @@ function decodeBody(event: LambdaEvent) {
   return Buffer.from(event.body, 'base64').toString('utf8')
 }
 
+class InvalidJsonError extends Error {
+  constructor() {
+    super('Invalid JSON body')
+    this.name = 'InvalidJsonError'
+  }
+}
+
 function parseJsonBody<TBody>(rawBody: string | undefined): TBody | undefined {
   if (!rawBody) return undefined
   try {
     return JSON.parse(rawBody) as TBody
   } catch {
-    throw new Error('Invalid JSON body')
+    throw new InvalidJsonError()
   }
-}
-
-function isInvalidJsonError(error: unknown) {
-  return error instanceof Error && error.message === 'Invalid JSON body'
 }
 
 function methodMatches(routeMethod: string | undefined, method: string) {

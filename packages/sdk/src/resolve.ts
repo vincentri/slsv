@@ -1,13 +1,5 @@
-// Maps a logical resource name (what the user writes) to the physical resource
-// injected as an env var by slsv at deploy time.
-//
-//   db('invoices')        -> DATABASE_INVOICES
-//   queue('emailQueue')   -> QUEUE_EMAILQUEUE
-//   storage('receipts')   -> BUCKET_RECEIPTS
-//   cache('session')      -> REDIS_SESSION
-//   secret('JWT_SECRET')  -> SECRET_JWT_SECRET   (value = the SM secret id, not the secret)
-//
-// Same env-var contract holds on every cloud — handler code never changes.
+// Maps a logical resource name (what the user writes) to the env var slsv injects
+// at deploy time. `db('invoices')` reads `process.env.DATABASE_INVOICES`.
 
 export function resolve(
   prefix: 'DATABASE' | 'QUEUE' | 'BUCKET' | 'REDIS' | 'SECRET',

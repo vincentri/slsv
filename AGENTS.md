@@ -42,5 +42,6 @@ rtk pip list            rtk pnpm install        rtk npm run <script>
 - In command chains, prefix each segment: `rtk git add . && rtk git commit -m "msg"`
 - For debugging, use raw command without rtk prefix
 - `rtk proxy <cmd>` runs command without filtering but tracks usage
+- **Never delete examples** (demo templates, `slsv.example.yml`, scaffold templates, reference apps). They are documentation, not dead code. Add a `ponytail:` deprecation comment instead of deletion.
 
 <!-- /headroom:rtk-instructions -->

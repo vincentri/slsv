@@ -11,11 +11,14 @@ const sqs = new SQSClient({})
 
 export function makeQueue(queueUrl: string): QueueClient {
   return {
-    async send(body: any) {
+    async send(body: any, opts: { delaySeconds?: number } = {}) {
       await sqs.send(
         new SendMessageCommand({
           QueueUrl: queueUrl,
           MessageBody: typeof body === 'string' ? body : JSON.stringify(body),
+          // ponytail: standard queues only — FIFO rejects per-message DelaySeconds
+          // (delay must be configured on the queue itself).
+          ...(opts.delaySeconds !== undefined ? { DelaySeconds: opts.delaySeconds } : {}),
         }),
       )
     },
@@ -44,23 +47,18 @@ export function makeQueue(queueUrl: string): QueueClient {
         }),
       )
       return (r.Messages ?? []).map((m) => ({
-        body: tryParse(m.Body),
+        body: parseBody(m.Body),
         receiptHandle: m.ReceiptHandle!,
       }))
     },
 
     async delete(receiptHandle: string) {
-      await sqs.send(
-        new DeleteMessageCommand({
-          QueueUrl: queueUrl,
-          ReceiptHandle: receiptHandle,
-        }),
-      )
+      await sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: receiptHandle }))
     },
   }
 }
 
-function tryParse(s?: string): any {
+function parseBody(s?: string): any {
   if (s == null) return s
   try {
     return JSON.parse(s)

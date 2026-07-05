@@ -1,7 +1,7 @@
 {
   "name": "@slsv/sdk",
   "version": "0.0.1",
-  "description": "Cloud-agnostic SDK for slsv apps — write once, run on any cloud",
+  "description": "Cloud-agnostic SDK for slsv apps \u2014 write once, run on any cloud",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -38,10 +38,14 @@
     "@aws-sdk/client-sqs": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
     "@aws-sdk/s3-request-presigner": "^3.0.0",
-    "ioredis": "^5.11.1"
+    "ioredis": "^5.11.1",
+    "mysql2": "^3.11.0",
+    "pg": "^8.13.0",
+    "drizzle-orm": "^0.36.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.4.0"

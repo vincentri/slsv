@@ -4,3 +4,4 @@ dist-server/
 .slsv/
 *.js.map
 .serena
+packages/cli/templates/**/package-lock.json

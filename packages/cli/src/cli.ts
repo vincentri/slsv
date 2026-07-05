@@ -1,4 +1,4 @@
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
 import path from 'path'
 import { existsSync } from 'fs'
 import { loadConfig, ConfigError } from './config.js'
@@ -112,7 +112,8 @@ program
 program
   .command('deploy')
   .description('Deploy (default: local, --target aws for real AWS)')
-  .option('--target <target>', 'local or aws', 'local')
+  .allowExcessArguments(false) // reject stray operands (e.g. `deploy -- target aws`) — see destroy
+  .addOption(new Option('--target <target>', 'local or aws').choices(['local', 'aws']).default('local'))
   .option('--stage <name>', 'deployment stage (namespaces resources)', 'dev')
   .action(async (opts: { target: 'local' | 'aws'; stage: string }) => {
     const cwd = process.cwd()
@@ -144,8 +145,14 @@ program
 program
   .command('destroy')
   .description("Delete this app's slsv.yml resources (Lambda/Dynamo/S3/SQS/secrets/caches/db).")
+  // Reject stray operands: `slsv destroy -- target aws` (space after --) made commander treat
+  // `target aws` as ignored positionals and silently fell back to --target local, so a real-AWS
+  // destroy quietly hit Floci and left the billable stack running. Error loud instead.
+  .allowExcessArguments(false)
   .option('--stage <name>', 'deployment stage to destroy', 'dev')
-  .option('--target <target>', 'local or aws', 'local')
+  // .choices() rejects typos (`--target awss`) that otherwise resolve to aws (makeClients treats
+  // any non-local value as aws).
+  .addOption(new Option('--target <target>', 'local or aws').choices(['local', 'aws']).default('local'))
   .option('-y, --yes', 'Skip confirmation prompt', false)
   .action(async (opts: { stage: string; target: 'local' | 'aws'; yes: boolean }) => {
     const cwd = process.cwd()
@@ -171,21 +178,6 @@ program
     console.log(`Deleting ${cfg.app}-${stage}-* on ${opts.target}...`)
     await provider.destroyResources(cfg, stage)
     console.log('Resources deleted.')
-    // Only the local emulator is ours to stop; on --target aws there's nothing to stop.
-    if (opts.target === 'local') {
-      provider.stopLocalEmulator(cwd)
-      console.log('Floci stopped.')
-    }
-  })
-
-program
-  .command('reset')
-  .description(
-    'Wipe ALL resources inside the shared Floci container (every repo on host). Containers stay up.',
-  )
-  .action(async () => {
-    console.log('Floci is managed outside slsv; reset it with the Floci CLI if needed.')
-    console.log('Floci resources wiped (all apps). Container still running.')
   })
 
 program.parseAsync(process.argv).catch((e) => {

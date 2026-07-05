@@ -68,6 +68,7 @@ const CacheConfig = z.object({
   type: z.enum(['redis', 'valkey']),
   nodeType: z.string().optional(), // ElastiCache node type, default 'cache.t3.micro'
   nodes: z.number().int().min(1).max(5).optional(), // NumCacheNodes, default 1
+  serverless: z.boolean().optional(), // --target aws only: CreateServerlessCache (auto-scale, TLS-only) instead of node group; ignored locally
 })
 
 const FrontendConfig = z.object({
@@ -91,9 +92,17 @@ const BucketConfig = z
   })
   .strict()
 
+const ApiConfig = z.object({
+  // Origins allowed to call the HTTP API from a browser (CORS AllowOrigins). Omit → '*' (open,
+  // today's default — needed for the S3-hosted frontend on a different origin). Set to your
+  // site(s) to lock it down, e.g. ['https://myapp.com']. Methods/headers stay '*'.
+  cors: z.array(z.string()).optional(),
+})
+
 const AppConfig = z.object({
   app: z.string(),
   functions: z.record(FunctionConfig).optional(),
+  api: ApiConfig.optional(),
   queues: z.record(QueueConfig).optional(),
   buckets: z.record(BucketConfig).optional(),
   databases: z.record(DatabaseConfig).optional(),
@@ -101,6 +110,11 @@ const AppConfig = z.object({
   secrets: z.array(z.string()).optional(),
   frontend: FrontendConfig.optional(),
   tags: z.record(z.string()).optional(), // custom tags merged onto every resource
+  // On deploy, reconcile prunes resources dropped from the yml. Default true: data stores
+  // (DynamoDB/S3/RDS) orphaned by a yml edit are DELETED (with their data). Set false to keep
+  // them — orphans are reported and left until `slsv destroy`. (Lambda/EventBridge/frontend are
+  // always pruned regardless; they're stateless.)
+  autoRemove: z.boolean().optional(),
   // CloudWatch log retention in days (default 14). 0 = never expire. Must be a value
   // CloudWatch accepts, else the log group would reject the retention policy.
   logRetentionDays: z

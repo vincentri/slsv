@@ -9,7 +9,6 @@ import {
   GetIntegrationsCommand,
   GetRoutesCommand,
   GetStagesCommand,
-  UpdateIntegrationCommand,
   UpdateRouteCommand,
   DeleteApiCommand,
 } from '@aws-sdk/client-apigatewayv2'
@@ -34,11 +33,12 @@ export async function ensureApiGateway(
   outputs: Record<string, AwsFnOutput>,
   appName: string,
   isLocal: boolean,
+  corsOrigins?: string[],
 ): Promise<string | undefined> {
   const httpFunctions = Object.entries(functions).filter(([, fn]) => fn.http?.length)
   if (httpFunctions.length === 0) return undefined
 
-  const api = await ensureHttpApi(apigw, appName)
+  const api = await ensureHttpApi(apigw, appName, corsOrigins)
   if (!api.ApiId) throw new Error(`API Gateway HTTP API for ${appName} is missing an id`)
 
   await ensureStage(apigw, api.ApiId)
@@ -75,10 +75,11 @@ export async function ensureApiGateway(
   return `${FLOCI_ENDPOINT}/execute-api/${api.ApiId}/$default`
 }
 
-async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string) {
-  // CORS so the S3-hosted frontend (different origin) can call the API. `*` is permissive;
-  // tighten to the frontend origin later if needed.
-  const cors = { AllowOrigins: ['*'], AllowMethods: ['*'], AllowHeaders: ['*'] }
+async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string, corsOrigins?: string[]) {
+  // CORS so the S3-hosted frontend (different origin) can call the API. Default `*` (permissive,
+  // required when frontend + API are separate origins); `api.cors` in slsv.yml locks AllowOrigins
+  // to specific sites. Methods/headers stay `*` — origin is the axis worth restricting.
+  const cors = { AllowOrigins: corsOrigins ?? ['*'], AllowMethods: ['*'], AllowHeaders: ['*'] }
 
   const existing = await apigw.send(new GetApisCommand({}))
   const found = existing.Items?.find((api) => api.Name === appName)

@@ -33,11 +33,6 @@ export function makeStorage(bucket: string): StorageClient {
       }
     },
 
-    async getText(key) {
-      const bytes = await this.get(key)
-      return bytes ? new TextDecoder().decode(bytes) : undefined
-    },
-
     async list(prefix) {
       const r = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }))
       return (r.Contents ?? []).map((o) => o.Key!).filter(Boolean)

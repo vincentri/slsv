@@ -51,7 +51,7 @@ export async function deployFunctions(
     console.log(`  Deploying function: ${fnName}`)
 
     const { zip, handlerRef } = await bundleHandler(fn.handler, cwd)
-    const overrides: Record<string, string> = { SLSV_PROVIDER: 'aws' }
+    const overrides: Record<string, string> = {}
     // ponytail: only inject AWS_ENDPOINT_URL locally; real AWS uses default endpoint resolution
     if (opts.localEndpoint) overrides.AWS_ENDPOINT_URL = opts.localEndpoint
     // fn.environment first so slsv bindings + overrides win — user can't clobber a binding

@@ -1,5 +1,7 @@
 import {
   CreateReplicationGroupCommand,
+  CreateServerlessCacheCommand,
+  DescribeServerlessCachesCommand,
   DeleteReplicationGroupCommand,
   DescribeReplicationGroupsCommand,
   type CreateReplicationGroupCommandInput,
@@ -50,6 +52,15 @@ export async function ensureCacheClusters(
     if (local) {
       const ip = await ensureLocalCache(client, clusterId, createInput)
       envVars[envKey('REDIS', name)] = `redis://${ip}:6379`
+      continue
+    }
+
+    // aws serverless (opt-in per cache: serverless: true). No node sizing — auto-scales,
+    // pay-per-use. AWS forces transit encryption, so the SDK gets a TLS-only rediss://
+    // endpoint (ioredis enables TLS from the scheme; no SDK change). Floci lacks this API,
+    // so the local branch above always uses node groups — serverless: true only changes aws.
+    if (cfg.serverless) {
+      envVars[envKey('REDIS', name)] = await ensureServerlessCache(client, clusterId, name, tags)
       continue
     }
 
@@ -192,4 +203,85 @@ function extractEndpoint(rg: any): { address: string; port: number } | undefined
   const ep = rg?.ConfigurationEndpoint ?? rg?.NodeGroups?.[0]?.PrimaryEndpoint
   if (!ep?.Address || !ep.Port) return undefined
   return { address: ep.Address, port: ep.Port }
+}
+
+// aws-only serverless ElastiCache helpers (mirror the node-group describe/extract/wait above).
+// --target local never calls these (Floci lacks CreateServerlessCache); serverless caches run
+// as node groups locally, same as the default path.
+type CacheEndpoint = { address: string; port: number }
+
+async function ensureServerlessCache(
+  client: ElastiCacheClient,
+  cacheName: string,
+  logicalName: string,
+  tags: Record<string, string>,
+): Promise<string> {
+  let ep = await describeServerlessEndpoint(client, cacheName)
+  if (!ep) {
+    try {
+      const r = await client.send(
+        new CreateServerlessCacheCommand({
+          ServerlessCacheName: cacheName,
+          Engine: 'valkey',
+          Tags: asTagArray(tags),
+        }),
+      )
+      ep = extractServerlessEndpoint(r.ServerlessCache)
+    } catch (e: any) {
+      // Already exists (prior deploy) — describe to recover its endpoint.
+      if (e.name !== 'ServerlessCacheAlreadyExistsFault') throw e
+      ep = await describeServerlessEndpoint(client, cacheName)
+    }
+  }
+  // Serverless provisions asynchronously (~minutes) — poll until the endpoint is populated.
+  if (!ep) {
+    console.log(`  waiting for serverless cache ${logicalName} to become available (can take several minutes)...`)
+    ep = await waitForServerlessEndpoint(client, cacheName)
+  }
+  // rediss:// — serverless is TLS-only; the plain redis:// the node path uses would be refused.
+  return `rediss://${ep.address}:${ep.port}`
+}
+
+async function describeServerlessEndpoint(
+  client: ElastiCacheClient,
+  cacheName: string,
+): Promise<CacheEndpoint | undefined> {
+  const r = await client
+    .send(new DescribeServerlessCachesCommand({ ServerlessCacheName: cacheName }))
+    .catch(() => null)
+  const sc = r?.ServerlessCaches?.[0]
+  return sc ? extractServerlessEndpoint(sc) : undefined
+}
+
+function extractServerlessEndpoint(sc: any): CacheEndpoint | undefined {
+  const ep = sc?.Endpoint
+  if (!ep?.Address || !ep.Port) return undefined
+  return { address: ep.Address, port: ep.Port }
+}
+
+async function waitForServerlessEndpoint(
+  client: ElastiCacheClient,
+  cacheName: string,
+  maxMs = 900_000,
+): Promise<CacheEndpoint> {
+  const start = Date.now()
+  let lastStatus = ''
+  while (Date.now() - start < maxMs) {
+    await new Promise((r) => setTimeout(r, 10_000))
+    const r = await client
+      .send(new DescribeServerlessCachesCommand({ ServerlessCacheName: cacheName }))
+      .catch(() => null)
+    const sc = r?.ServerlessCaches?.[0]
+    const status = sc?.Status ?? 'unknown'
+    if (status !== lastStatus) {
+      console.log(`    ${cacheName}: ${status} (${Math.round((Date.now() - start) / 60_000)}m elapsed)`)
+      lastStatus = status
+    }
+    const ep = sc ? extractServerlessEndpoint(sc) : undefined
+    if (ep) return ep
+  }
+  throw new Error(
+    `caches: ${cacheName} not available after ${Math.round(maxMs / 60_000)}m (last status: ${lastStatus}). ` +
+      `Re-run deploy to resume.`,
+  )
 }

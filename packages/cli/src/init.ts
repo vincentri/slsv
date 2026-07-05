@@ -20,12 +20,12 @@ export function initScaffold(
 
   if (template === 'minimal') {
     if (hasBackend) {
-      mkdirSync(path.join(dir, 'src'), { recursive: true })
+      mkdirSync(path.join(dir, 'backend'), { recursive: true })
       mkdirSync(path.join(dir, 'test'), { recursive: true })
       writeFileSync(path.join(dir, 'package.json'), PKG_JSON(name, dir))
       writeFileSync(path.join(dir, 'tsconfig.json'), TSCONFIG)
       writeFileSync(path.join(dir, '.env.example'), MINIMAL_ENV_EXAMPLE)
-      writeFileSync(path.join(dir, 'src/api.ts'), MINIMAL_API_HANDLER)
+      writeFileSync(path.join(dir, 'backend/api.ts'), MINIMAL_API_HANDLER)
     }
     if (hasFrontend) {
       mkdirSync(path.join(dir, 'frontend/src'), { recursive: true })
@@ -37,12 +37,14 @@ export function initScaffold(
         hasBackend ? FRONTEND_MAIN_FULLSTACK : FRONTEND_MAIN_STANDALONE,
       )
       writeFileSync(path.join(dir, 'frontend/src/vite-env.d.ts'), FRONTEND_VITE_ENV_DTS)
+      writeFileSync(path.join(dir, 'frontend/pnpm-workspace.yaml'), PNPM_WORKSPACE)
     }
     if (!hasBackend) {
       writeFileSync(path.join(dir, '.env.example'), FRONTEND_ENV_EXAMPLE)
     }
     writeFileSync(path.join(dir, 'slsv.yml'), MINIMAL_SLSV_YML(name, stack))
     writeFileSync(path.join(dir, '.gitignore'), GITIGNORE)
+    writeFileSync(path.join(dir, 'pnpm-workspace.yaml'), PNPM_WORKSPACE)
   } else {
     copyDemoTemplate(dir, name)
   }
@@ -89,12 +91,11 @@ export function initOutroMessage(
   template: Template = 'minimal',
 ): string {
   const base = `cd ${name} && cp .env.example .env`
-  const deps = template === 'demo' ? 'npm install && ' : ''
-  const fe = 'cd frontend && npm install && cd ..'
+  const fe = `cd frontend && pnpm install && cd ..`
   const run = 'slsv dev'
-  if (stack === 'backend') return `${base} && ${deps}${run}`
+  if (stack === 'backend') return `${base} && pnpm install && ${run}`
   if (stack === 'frontend') return `cd ${name} && ${fe} && ${run}`
-  return `${base} && ${deps}${fe} && ${run}`
+  return `${base} && pnpm install && ${fe} && ${run}`
 }
 
 // ─── Minimal template ──────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ const MINIMAL_SLSV_YML = (name: string, stack: Stack = 'fullstack') => {
 functions:
   api:
     runtime: nodejs22
-    handler: ./src/api.handler
+    handler: ./backend/api.handler
     http:
       - method: ANY
         path: /api/{proxy+}
@@ -118,8 +119,8 @@ databases:
 
   const frontendBlock = `
 frontend:
-  src: ./frontend
-  build: npm run build`
+  src: ./frontend/dist
+  build: cd frontend && pnpm install && pnpm run build`
 
   const parts = [`app: ${name}`]
   if (stack !== 'frontend') parts.push(backendBlock)
@@ -204,11 +205,18 @@ const TSCONFIG = JSON.stringify(
       skipLibCheck: true,
       noEmit: true,
     },
-    include: ['src', 'test'],
+    include: ['backend', 'test'],
   },
   null,
   2,
 )
+
+// pnpm 10+ blocks native build scripts by default and exits non-zero, breaking `pnpm install`
+// (esbuild arrives via the @slsv/sdk toolchain at the root and via vite in the frontend). pnpm
+// 11 ignores the safer `onlyBuiltDependencies` allowlist from a config file, so this is the only
+// setting it honors. Shipped at app root + frontend/. Inert for npm/yarn.
+const PNPM_WORKSPACE = `dangerouslyAllowAllBuilds: true
+`
 
 const GITIGNORE = `node_modules/
 dist/

@@ -5,3 +5,8 @@ packages:
 
 onlyBuiltDependencies:
   - esbuild
+
+# Dedupe @smithy/types to one version — two copies (4.15.0 + 4.15.1) split the Command<>
+# type identity, breaking DynamoDBDocumentClient.send() overload resolution in db.ts.
+overrides:
+  '@smithy/types': 4.15.1
