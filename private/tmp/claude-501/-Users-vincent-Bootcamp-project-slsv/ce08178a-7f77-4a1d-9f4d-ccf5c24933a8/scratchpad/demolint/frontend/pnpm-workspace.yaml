@@ -1,4 +1,0 @@
-# pnpm 10+ blocks native build scripts by default and exits non-zero, so `pnpm install` fails
-# on vite's esbuild postinstall. pnpm 11 ignores the safer `onlyBuiltDependencies` allowlist
-# from a config file, so this is the only setting it honors. Inert for npm/yarn.
-dangerouslyAllowAllBuilds: true

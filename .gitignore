@@ -5,3 +5,5 @@ dist-server/
 *.js.map
 .serena
 packages/cli/templates/**/package-lock.json
+examples
+private

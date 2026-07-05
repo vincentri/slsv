@@ -1,5 +1,0 @@
-# pnpm 10+ blocks native build scripts by default and exits non-zero, which breaks
-# `pnpm install` (esbuild ships via the @slsv/sdk toolchain and, in the frontend, via vite).
-# pnpm 11 ignores the safer `onlyBuiltDependencies` allowlist from a config file, so this is
-# the only setting it honors. Scoped to this app; inert for npm/yarn.
-dangerouslyAllowAllBuilds: true
