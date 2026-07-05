@@ -6,12 +6,14 @@ import {
   BillingMode,
 } from '@aws-sdk/client-dynamodb'
 import { envKey } from '../../env-key.js'
+import { asTagArray } from './tags.js'
 import type { DynamoDbDef } from '../../config.js'
 
 export async function ensureDynamoTables(
   dynamo: DynamoDBClient,
   tables: Record<string, DynamoDbDef>,
   appName: string,
+  tags: Record<string, string>,
 ): Promise<Record<string, string>> {
   const envVars: Record<string, string> = {}
 
@@ -66,6 +68,7 @@ export async function ensureDynamoTables(
           KeySchema: keySchema,
           BillingMode: BillingMode.PAY_PER_REQUEST,
           ...(gsis?.length ? { GlobalSecondaryIndexes: gsis } : {}),
+          Tags: asTagArray(tags),
         }),
       )
     } catch (e: any) {

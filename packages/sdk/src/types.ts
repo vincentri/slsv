@@ -44,6 +44,10 @@ export interface StorageClient {
   getText(key: string): Promise<string | undefined>
   list(prefix?: string): Promise<string[]>
   delete(key: string): Promise<void>
+  // Browser fetches/uploads directly to S3 using a time-limited URL.
+  // Pair with `cors:` on the bucket in slsv.yml — otherwise the browser preflight fails.
+  getSignedUrl(key: string, opts?: { expiresIn?: number }): Promise<string>
+  putSignedUrl(key: string, opts?: { expiresIn?: number; contentType?: string }): Promise<string>
 }
 
 export interface CacheClient {

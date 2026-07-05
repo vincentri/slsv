@@ -18,6 +18,12 @@ functions:
         path: /health
     # timeout: 30                      # seconds, 1-900 (default 30)
     # memory: 256                      # MB, 128-10240 (default 256)
+    # architecture: arm64              # arm64 (default, cheaper+faster) | x86_64. Immutable after create.
+    # ephemeralStorage: 512            # /tmp size MB, 512-10240 (default 512)
+    # tracing: true                    # X-Ray active tracing
+    # reservedConcurrency: 10          # cap concurrent executions (0 = throttle all)
+    # provisionedConcurrency: 2        # warm instances, no cold start (--target aws only).
+                                       # Publishes a version + `live` alias; costs $ 24/7.
     # environment:                     # custom env vars (slsv bindings always win)
     #   LOG_LEVEL: debug
 
@@ -53,7 +59,11 @@ queues:
   #   fifo: true
 
 buckets:
-  uploads: {} # no per-bucket knobs in phase 1
+  private: {}                                  # only Lambda reads/writes
+  # public:                                     # browser reads objects via the bucket URL
+  #   publicRead: true                          # → s3:GetObject policy + access blocks off
+  # uploads:                                    # browser uploads via presigned PUT
+  #   cors: ['https://app.example.com']         # → PutBucketCors for the listed origins
 
 databases:
   # dynamodb — NoSQL table; access with db('orders') → DATABASE_ORDERS
@@ -74,6 +84,8 @@ databases:
     # instanceClass: db.t3.micro       # RDS class (--target aws only; default db.t3.micro)
     # storage: 20                      # GB (--target aws only; default 20, max 65536)
     # multiAz: false                   # (--target aws only)
+    # skipFinalSnapshot: true          # destroy takes NO final snapshot (default true).
+                                       # false → destroy saves a timestamped snapshot first.
 
   # replica:
   #   type: mysql
@@ -93,7 +105,7 @@ databases:
 caches:
   session:
     type: valkey                      # `type: redis` is an alias — same backend
-    # nodeType: cache.t3.micro         # ElastiCache node type (--target aws only)
+    # nodeType: cache.t4g.micro        # ElastiCache node type (--target aws only; default t4g.micro)
     # nodes: 1                         # NumCacheNodes (--target aws only; 1-5)
 
   # big:
@@ -109,10 +121,23 @@ secrets:
   - JWT_SECRET
   - WEBHOOK_SECRET
 
+tags:
+  # Custom tags applied to EVERY provisioned resource (on top of the automatic
+  # slsv:managed-by / slsv:app / slsv:stage tags). Use for cost allocation / ownership.
+  Team: payments
+  CostCenter: eng-42
+
+# logRetentionDays: 14   # CloudWatch log retention for all functions (default 14; 0 = never
+                         # expire). Must be a CloudWatch value: 1,3,5,7,14,30,60,90,...,3653.
+
 frontend:
   src: ./frontend/dist                # build output to serve
   build: npm --prefix frontend install && npm --prefix frontend run build # build cmd
-  # cloudfront: true                  # CloudFront distribution on --target aws
+  # cloudfront: true                  # aws-only. Serves the frontend + /api/* under one
+                                       # HTTPS *.cloudfront.net domain (S3 website endpoints
+                                       # are HTTP-only). Skips the VITE_SLSV_API_URL injection
+                                       # so /api calls stay relative (same-origin). Deploy and
+                                       # destroy each take ~15-20 min (CloudFront propagation).
 
 # ── Per-stage overrides (optional) ──────────────────────────────────────────
 # `stages.<name>` deep-merges over the base above for `--stage <name>`. Override ONLY

@@ -2,7 +2,7 @@ import type { AppConfig } from '../config.js'
 
 export interface FunctionOutput {
   name: string
-  ref: string // ARN on AWS, resource name on GCP, etc.
+  arn: string // Lambda ARN on AWS, function name on GCP, etc.
 }
 
 export interface Provider {
@@ -10,8 +10,14 @@ export interface Provider {
   startLocalEmulator(cwd: string, cfg: AppConfig): Promise<void>
   stopLocalEmulator(cwd: string): void
 
-  // Pre-deploy infra (IAM role, log groups, etc.)
-  setup(appName: string, functionNames: string[]): Promise<void>
+  // Pre-deploy infra (IAM role, log groups, etc.). `tags` are applied to every resource
+  // provisioned afterward, so setup() must run before any ensure*/wire*/deploy* call.
+  setup(
+    appName: string,
+    functionNames: string[],
+    tags: Record<string, string>,
+    logRetentionDays: number,
+  ): Promise<void>
 
   // Resources → env vars injected into functions
   ensureBuckets(buckets: AppConfig['buckets'], appName: string): Promise<Record<string, string>>
@@ -60,6 +66,7 @@ export interface Provider {
     frontend: AppConfig['frontend'],
     appName: string,
     cwd: string,
+    apiUrl?: string,
   ): Promise<string | undefined>
 
   // Observability

@@ -68,6 +68,72 @@ stages:
   })
 })
 
+describe('bucket config', () => {
+  let tmp: string
+  const write = (yml: string) => writeFileSync(path.join(tmp, 'slsv.yml'), yml)
+  beforeEach(() => {
+    tmp = path.join(os.tmpdir(), `slsv-bucket-${Math.random().toString(36).slice(2)}`)
+    mkdirSync(tmp, { recursive: true })
+  })
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+
+  it('accepts an empty bucket body (legacy `name: {}` shape)', () => {
+    write(`app: shop\nbuckets:\n  uploads: {}\n`)
+    const cfg = loadConfig(tmp, 'dev')
+    expect(cfg.buckets!.uploads).toEqual({})
+  })
+
+  it('accepts a bare bucket key (YAML null treated as {})', () => {
+    write(`app: shop\nbuckets:\n  uploads:\n`)
+    const cfg = loadConfig(tmp, 'dev')
+    expect(cfg.buckets!.uploads).toEqual({})
+  })
+
+  it('stage overlay `buckets.<name>: null` still REMOVES the bucket (not silently coerced)', () => {
+    write(`
+app: shop
+buckets:
+  uploads: {}
+  public:
+    publicRead: true
+stages:
+  prod:
+    buckets:
+      uploads: null
+`)
+    const cfg = loadConfig(tmp, 'prod')
+    expect(cfg.buckets!.uploads).toBeUndefined()
+    expect(cfg.buckets!.public).toEqual({ publicRead: true })
+  })
+
+  it('accepts publicRead + cors', () => {
+    write(`
+app: shop
+buckets:
+  public:
+    publicRead: true
+    cors: ['https://app.example.com']
+`)
+    const cfg = loadConfig(tmp, 'dev')
+    expect(cfg.buckets!.public).toEqual({
+      publicRead: true,
+      cors: ['https://app.example.com'],
+    })
+  })
+
+  it('rejects unknown bucket properties', () => {
+    write(`
+app: shop
+buckets:
+  weird:
+    publicRead: true
+    versioning: true
+`)
+    expect(() => loadConfig(tmp, 'dev')).toThrow(/Invalid slsv\.yml/)
+    expect(() => loadConfig(tmp, 'dev')).toThrow(/versioning|publicRead/)
+  })
+})
+
 describe('loadConfig error UX', () => {
   let tmp: string
   const write = (yml: string) => writeFileSync(path.join(tmp, 'slsv.yml'), yml)

@@ -3,19 +3,19 @@ import type { Provider, FunctionOutput } from '../types.js'
 import type { AppConfig } from '../../config.js'
 import { makeClients, type Clients } from './clients.js'
 import { ensureExecRole, deleteExecRole } from './iam.js'
-import { ensureLogGroup } from './logs.js'
+import { ensureLogGroup, deleteLogGroup } from './logs.js'
 import { ensureDynamoTables } from './dynamodb.js'
 import { ensureBuckets } from './s3.js'
 import { ensureQueues, type QueueOutput } from './sqs.js'
 import { ensureSecrets } from './secrets.js'
 import { deployFunctions } from './functions.js'
-import { ensureApiGateway } from './apigw.js'
+import { ensureApiGateway, deleteHttpApi } from './apigw.js'
 import { ensureCronTriggers, ensureEventTriggers } from './eventbridge.js'
 import { ensureEventSourceMappings } from './eventsource.js'
 import { tailLogs } from './logs-tail.js'
 import { ensureCacheClusters } from './redis.js'
 import { ensureDbInstances } from './databases.js'
-import { deployFrontendLocal, deployFrontendAws } from './frontend.js'
+import { deployFrontendLocal, deployFrontendAws, destroyDistribution } from './frontend.js'
 import {
   UpdateFunctionCodeCommand,
   DeleteFunctionCommand,
@@ -28,7 +28,7 @@ import {
   DeleteBucketCommand,
   ListBucketsCommand,
 } from '@aws-sdk/client-s3'
-import { GetQueueUrlCommand, DeleteQueueCommand, ListQueuesCommand } from '@aws-sdk/client-sqs'
+import { GetQueueUrlCommand, DeleteQueueCommand } from '@aws-sdk/client-sqs'
 import { DeleteSecretCommand } from '@aws-sdk/client-secrets-manager'
 import {
   ListRulesCommand,
@@ -46,12 +46,6 @@ const LOCAL_ENDPOINT = 'http://localhost:4566'
 // A Lambda runs INSIDE the Floci container, where `localhost` is the container itself.
 // It must reach Floci's AWS APIs via the docker host (same trick as the redis endpoint).
 const LAMBDA_LOCAL_ENDPOINT = 'http://host.docker.internal:4566'
-
-// ponytail: adapter — wire* helpers expect {name,arn}, deployFunctions returns {name,ref}.
-const toAwsOutputs = (
-  fnOutputs: Record<string, FunctionOutput>,
-): Record<string, { name: string; arn: string }> =>
-  Object.fromEntries(Object.entries(fnOutputs).map(([k, v]) => [k, { name: v.name, arn: v.ref }]))
 
 // Drain a token-paginated AWS list call. Each SDK uses a different token field, so the
 // caller adapts request/response tokens; this just loops until there's no next token.
@@ -73,6 +67,7 @@ export class AwsProvider implements Provider {
   private clients: Clients
   private roleArn?: string
   private appName = ''
+  private tags: Record<string, string> = {}
   private queueOutputs: Record<string, QueueOutput> = {}
 
   constructor(target: 'local' | 'aws' = 'local') {
@@ -92,15 +87,27 @@ export class AwsProvider implements Provider {
   // re-created on next deploy, harmless locally. Add cleanup if Floci clutter ever matters.
   async destroyResources(cfg: AppConfig, stage: string) {
     const appName = `${cfg.app}-${stage}`
-    const swallow = (ok: string[]) => (e: any) => {
-      if (!ok.includes(e.name)) throw e
+    // Destroy is idempotent: swallow any "already gone" error so a partial/re-run destroy
+    // never fails. Each service names its not-found error differently
+    // (ResourceNotFoundException / NoSuchBucket / NoSuchEntity / QueueDoesNotExist /
+    // ReplicationGroupNotFoundFault / DBInstanceNotFound / NonExistentQueue / ...), so match
+    // the common shapes instead of maintaining a per-call list. `swallow()` ignores an
+    // optional list arg for call sites that still pass one.
+    const gone = /(NotFound|NoSuch|DoesNotExist|NonExistent)/i
+    const swallow = (_ok?: string[]) => (e: any) => {
+      if (!gone.test(e?.name ?? '')) throw e
     }
+
+    // API Gateway (deletes its routes/integrations/stages too)
+    await deleteHttpApi(this.clients.apigw, appName).catch(swallow(['NotFoundException']))
 
     // Lambda
     for (const name of Object.keys(cfg.functions ?? {})) {
       await this.clients.lambda
         .send(new DeleteFunctionCommand({ FunctionName: `${appName}-${name}` }))
         .catch(swallow(['ResourceNotFoundException']))
+      // Delete the function's log group too, else logs linger and bill after teardown.
+      await deleteLogGroup(this.clients.logs, `${appName}-${name}`)
     }
 
     // DynamoDB (databases of type dynamodb)
@@ -111,9 +118,11 @@ export class AwsProvider implements Provider {
         .catch(swallow(['ResourceNotFoundException']))
     }
 
-    // S3 (empty first, AWS refuses non-empty delete)
-    for (const name of Object.keys(cfg.buckets ?? {})) {
-      const bucket = `${appName}-${name}`.toLowerCase()
+    // S3 (empty first, AWS refuses non-empty delete). Includes the frontend hosting bucket,
+    // which is created by deployFrontend (not declared under `buckets:`) — else it orphans.
+    const bucketNames = Object.keys(cfg.buckets ?? {}).map((n) => `${appName}-${n}`.toLowerCase())
+    if (cfg.frontend) bucketNames.push(`${appName}-frontend`.toLowerCase())
+    for (const bucket of bucketNames) {
       try {
         const listed = await this.clients.s3.send(new ListObjectsV2Command({ Bucket: bucket }))
         if (listed.Contents?.length) {
@@ -126,7 +135,7 @@ export class AwsProvider implements Provider {
         }
         await this.clients.s3.send(new DeleteBucketCommand({ Bucket: bucket }))
       } catch (e: any) {
-        if (!['NoSuchBucket', 'NotFound'].includes(e.name)) throw e
+        if (!gone.test(e?.name ?? '')) throw e
       }
     }
 
@@ -138,7 +147,7 @@ export class AwsProvider implements Provider {
         )
         await this.clients.sqs.send(new DeleteQueueCommand({ QueueUrl: r.QueueUrl }))
       } catch (e: any) {
-        if (!['AWS.SimpleQueueService.NonExistentQueue'].includes(e.name)) throw e
+        if (!gone.test(e?.name ?? '')) throw e
       }
     }
 
@@ -165,9 +174,27 @@ export class AwsProvider implements Provider {
     // RDS (one instance per postgres/mysql databases.<name>)
     for (const [name, d] of Object.entries(cfg.databases ?? {})) {
       if (d.type !== 'postgres' && d.type !== 'mysql') continue
+      // Real AWS requires a final-snapshot decision. Default skip (slsv DBs are manifest-
+      // managed). Set `skipFinalSnapshot: false` in slsv.yml to take a timestamped snapshot.
+      const skip = d.skipFinalSnapshot ?? true
       await this.clients.rds
-        .send(new DeleteDBInstanceCommand({ DBInstanceIdentifier: `${appName}-${name}` }))
+        .send(
+          new DeleteDBInstanceCommand({
+            DBInstanceIdentifier: `${appName}-${name}`,
+            SkipFinalSnapshot: skip,
+            DeleteAutomatedBackups: skip,
+            ...(skip
+              ? {}
+              : { FinalDBSnapshotIdentifier: `${appName}-${name}-final-${Date.now()}` }),
+          }),
+        )
         .catch(swallow(['DBInstanceNotFound']))
+    }
+
+    // CloudFront (only exists if frontend.cloudfront was set). Disable → wait → delete: a
+    // distribution can't be deleted while enabled, and both transitions take ~10-20 min each.
+    if (cfg.frontend?.cloudfront) {
+      await destroyDistribution(this.clients.cloudfront, appName).catch(swallow())
     }
 
     // IAM exec role (per app+stage)
@@ -287,73 +314,34 @@ export class AwsProvider implements Provider {
     }
   }
 
-  // What's actually deployed for this app+stage right now, grouped by type. Read-only.
-  async status(cfg: AppConfig, stage: string): Promise<Record<string, string[]>> {
-    const prefix = `${cfg.app}-${stage}-`
-    const strip = (n: string) => n.slice(prefix.length)
-    const owned = (n?: string): n is string => !!n && n.startsWith(prefix)
-
-    const fns = await paginate((Marker) =>
-      this.clients.lambda
-        .send(new ListFunctionsCommand({ Marker }))
-        .then((r) => ({ items: r.Functions ?? [], next: r.NextMarker })),
-    )
-    const tables = await paginate((ExclusiveStartTableName) =>
-      this.clients.dynamo
-        .send(new ListTablesCommand({ ExclusiveStartTableName }))
-        .then((r) => ({ items: r.TableNames ?? [], next: r.LastEvaluatedTableName })),
-    )
-    const dbs = await paginate((Marker) =>
-      this.clients.rds
-        .send(new DescribeDBInstancesCommand({ Marker }))
-        .then((r) => ({ items: r.DBInstances ?? [], next: r.Marker })),
-    )
-    const queues = await this.clients.sqs.send(new ListQueuesCommand({ QueueNamePrefix: prefix }))
-    const buckets = await this.clients.s3.send(new ListBucketsCommand({}))
-    const caches = await this.clients.elasticache.send(new DescribeReplicationGroupsCommand({}))
-    const lcPrefix = prefix.toLowerCase()
-
-    return {
-      functions: fns.filter((f) => owned(f.FunctionName)).map((f) => strip(f.FunctionName!)),
-      tables: tables.filter(owned).map(strip),
-      queues: (queues.QueueUrls ?? [])
-        .map((u) => u.split('/').pop()!)
-        .filter(owned)
-        .map(strip),
-      buckets: (buckets.Buckets ?? [])
-        .map((b) => b.Name!)
-        .filter((n) => n.startsWith(lcPrefix))
-        .map((n) => n.slice(lcPrefix.length)),
-      databases: dbs
-        .filter((d) => owned(d.DBInstanceIdentifier))
-        .map((d) => strip(d.DBInstanceIdentifier!)),
-      caches: (caches.ReplicationGroups ?? [])
-        .map((c) => c.ReplicationGroupId!)
-        .filter(owned)
-        .map(strip),
-    }
-  }
-
-  async setup(appName: string, functionNames: string[]) {
+  async setup(
+    appName: string,
+    functionNames: string[],
+    tags: Record<string, string>,
+    logRetentionDays: number,
+  ) {
     this.appName = appName
+    this.tags = tags
     console.log('→ IAM exec role')
-    this.roleArn = await ensureExecRole(this.clients.iam, appName)
+    this.roleArn = await ensureExecRole(this.clients.iam, appName, tags)
 
     console.log('→ CloudWatch log groups')
     await Promise.all(
-      functionNames.map((name) => ensureLogGroup(this.clients.logs, `${appName}-${name}`)),
+      functionNames.map((name) =>
+        ensureLogGroup(this.clients.logs, `${appName}-${name}`, logRetentionDays),
+      ),
     )
   }
 
   async ensureBuckets(buckets: AppConfig['buckets'], appName: string) {
-    return ensureBuckets(this.clients.s3, buckets, appName)
+    return ensureBuckets(this.clients.s3, buckets, appName, this.tags)
   }
 
   async ensureQueues(
     queues: AppConfig['queues'],
     appName: string,
   ): Promise<Record<string, string>> {
-    this.queueOutputs = await ensureQueues(this.clients.sqs, queues, appName)
+    this.queueOutputs = await ensureQueues(this.clients.sqs, queues, appName, this.tags)
     const envVars: Record<string, string> = {}
     for (const [name, q] of Object.entries(this.queueOutputs)) {
       envVars[envKey('QUEUE', name)] = q.url
@@ -362,19 +350,24 @@ export class AwsProvider implements Provider {
   }
 
   async ensureSecrets(secrets: string[], env: Record<string, string | undefined>, prefix: string) {
-    return ensureSecrets(this.clients.secrets, secrets, env, prefix)
+    return ensureSecrets(this.clients.secrets, secrets, env, prefix, this.tags)
   }
 
   async ensureCaches(
     caches: AppConfig['caches'],
     appName: string,
   ): Promise<Record<string, string>> {
-    // Each caches.<name> → ElastiCache Redis cluster (Floci locally, real AWS for --target aws).
-    // Floci spins up a real redis process per cluster; the endpoint comes back from the API.
-    // Local: override host→host.docker.internal so Lambda (inside the floci container) reaches
-    // the host-published cluster ports. AWS: use the real endpoint address as-is.
-    const hostOverride = this.target === 'local' ? 'host.docker.internal' : undefined
-    return ensureCacheClusters(this.clients.elasticache, caches, appName, hostOverride)
+    // Each caches.<name> → ElastiCache Redis/Valkey group (Floci locally, real AWS for --target aws).
+    // Reachability differs by target — redis.ts handles both (aws uses the API endpoint; local
+    // reads the valkey container's floci-network IP, since Floci's API returns an unreachable
+    // localhost). Pass `local` so it picks the branch.
+    return ensureCacheClusters(
+      this.clients.elasticache,
+      caches,
+      appName,
+      this.tags,
+      this.target === 'local',
+    )
   }
 
   async ensureDatabases(
@@ -386,11 +379,18 @@ export class AwsProvider implements Provider {
     const dynamoEntries = Object.fromEntries(
       Object.entries(databases ?? {}).filter(([, v]) => v.type === 'dynamodb'),
     ) as Record<string, import('../../config.js').DynamoDbDef>
-    const dynamoEnvs = await ensureDynamoTables(this.clients.dynamo, dynamoEntries, appName)
+    const dynamoEnvs = await ensureDynamoTables(this.clients.dynamo, dynamoEntries, appName, this.tags)
 
     // Postgres/MySQL: provisioned via the RDS API (Floci locally, real AWS for --target aws).
     // init_sql runs once on first creation. Target-agnostic — the client endpoint decides where.
-    const rdsEnvs = await ensureDbInstances(this.clients.rds, databases, appName, cwd)
+    const rdsEnvs = await ensureDbInstances(
+      this.clients.rds,
+      databases,
+      appName,
+      cwd,
+      this.tags,
+      this.target === 'local',
+    )
 
     return { ...dynamoEnvs, ...rdsEnvs }
   }
@@ -422,10 +422,9 @@ export class AwsProvider implements Provider {
       localizedEnv,
       cwd,
       { localEndpoint: this.target === 'local' ? LAMBDA_LOCAL_ENDPOINT : undefined },
+      this.tags,
     )
-    return Object.fromEntries(
-      Object.entries(outputs).map(([k, v]) => [k, { name: v.name, ref: v.arn }]),
-    )
+    return outputs
   }
 
   async updateFunctionCode(fnName: string, zip: Uint8Array) {
@@ -448,17 +447,19 @@ export class AwsProvider implements Provider {
       this.clients.apigw,
       this.clients.lambda,
       functions,
-      toAwsOutputs(fnOutputs),
+      fnOutputs,
       appName,
+      this.target === 'local',
     )
   }
 
   async wireQueues(functions: AppConfig['functions'], fnOutputs: Record<string, FunctionOutput>) {
+    if (!functions || !Object.values(functions).some((f) => f.queue)) return
     console.log('→ SQS event source mappings')
     await ensureEventSourceMappings(
       this.clients.lambda,
       functions,
-      toAwsOutputs(fnOutputs),
+      fnOutputs,
       this.queueOutputs,
     )
   }
@@ -468,20 +469,23 @@ export class AwsProvider implements Provider {
     fnOutputs: Record<string, FunctionOutput>,
     appName: string,
   ) {
-    console.log('→ EventBridge cron rules')
+    if (!functions || !Object.values(functions).some((f) => f.cron || f.event)) return
+    console.log('→ EventBridge rules')
     await ensureCronTriggers(
       this.clients.events,
       this.clients.lambda,
       functions,
-      toAwsOutputs(fnOutputs),
+      fnOutputs,
       appName,
+      this.tags,
     )
     await ensureEventTriggers(
       this.clients.events,
       this.clients.lambda,
       functions,
-      toAwsOutputs(fnOutputs),
+      fnOutputs,
       appName,
+      this.tags,
     )
   }
 
@@ -489,12 +493,27 @@ export class AwsProvider implements Provider {
     frontend: AppConfig['frontend'],
     appName: string,
     cwd: string,
+    apiUrl?: string,
   ): Promise<string | undefined> {
     if (!frontend) return undefined
     console.log('\nFrontend:')
-    if (this.target === 'local') return deployFrontendLocal(frontend, cwd)
-    const region = process.env.AWS_REGION ?? 'us-east-1'
-    return deployFrontendAws(this.clients.s3, frontend, appName, cwd, region)
+    if (this.target === 'local') return deployFrontendLocal(frontend, cwd, apiUrl)
+    // Resolve region from the S3 client's own config (full AWS chain: AWS_REGION,
+    // AWS_DEFAULT_REGION, profile, ...) so the website URL matches where the bucket was
+    // actually created. `process.env.AWS_REGION ?? 'us-east-1'` mismatched when the region
+    // came from a profile / AWS_DEFAULT_REGION.
+    const regionCfg = this.clients.s3.config.region
+    const region = typeof regionCfg === 'function' ? await regionCfg() : regionCfg
+    return deployFrontendAws(
+      this.clients.s3,
+      this.clients.cloudfront,
+      frontend,
+      appName,
+      cwd,
+      region,
+      this.tags,
+      apiUrl,
+    )
   }
 
   async tailLogs(fnName: string, follow: boolean) {

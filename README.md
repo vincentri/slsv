@@ -117,7 +117,11 @@ queues:
   # dead: { type: sqs }
 
 buckets:
-  uploads: {}
+  uploads: {}                                     # private — only Lambda reads/writes
+  public-assets:                                  # browser reads objects directly via bucket URL
+    publicRead: true
+  user-uploads:                                   # browser uploads directly via presigned PUT
+    cors: ['https://app.example.com']
 
 databases: # slsv injects DATABASE_<NAME> into every function
   orders: # dynamodb — db('orders') → DATABASE_ORDERS
@@ -145,6 +149,29 @@ secrets:
   - JWT_SECRET # read from .env, injected into every function
 ```
 
+### Buckets
+
+Three patterns, pick per-bucket:
+
+```yaml
+buckets:
+  uploads: {}                                      # private — only Lambda reads/writes
+  public-assets:                                   # browser reads objects directly via the bucket URL
+    publicRead: true
+  user-uploads:                                    # browser uploads directly via presigned PUT
+    cors: ['https://app.example.com']
+```
+
+| Config | What slsv does | When to use |
+|---|---|---|
+| `{}` | Creates the bucket, tags it. Private — no public access. | Function-side read/write only (processed data, internal artifacts) |
+| `publicRead: true` | Disables the 4 public-access blocks + attaches `s3:GetObject` policy for `Principal: '*'` | Avatars, processed images, static assets the browser fetches directly |
+| `cors: [...]` | Adds `PutBucketCors` allowing the listed origins, GET/PUT/POST/HEAD, all headers | Browser uploads/downloads via presigned URLs from a different origin |
+
+`publicRead` + `cors` can be combined, but only do that for assets you actually want public. Pair `cors:` with `putSignedUrl()`/`getSignedUrl()` in the SDK — without those, CORS is half a feature.
+
+A working example lives at [`examples/bucket-app/`](./examples/bucket-app/README.md) — three buckets, three endpoints covering each pattern.
+
 ---
 
 ## Handler code
@@ -165,6 +192,12 @@ await queue('jobs').send({ userId: '123' })
 // S3
 await storage('uploads').put('file.txt', 'hello')
 await storage('uploads').getText('file.txt')
+// Presigned URLs — pair with `cors:` on the bucket so the browser can PUT/GET directly.
+const putUrl = await storage('user-uploads').putSignedUrl('avatars/1.jpg', {
+  expiresIn: 60,
+  contentType: 'image/jpeg',
+})
+const getUrl = await storage('public-assets').getSignedUrl('logo.png', { expiresIn: 3600 })
 
 // Redis / Valkey (by name — isolated keyspaces; `type: redis` and `type: valkey` are aliases)
 await cache('session').set('user:1', JSON.stringify(data), { ttl: 3600 })
@@ -235,6 +268,7 @@ packages/
 
 examples/
   invoice-app/ # reference app — always must work with slsv dev
+  bucket-app/  # three S3 patterns: private + public-read + CORS uploads
 ```
 
 ---

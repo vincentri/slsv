@@ -8,6 +8,7 @@ import {
   DeleteRolePolicyCommand,
   DeleteRoleCommand,
 } from '@aws-sdk/client-iam'
+import { asTagArray } from './tags.js'
 
 const BASIC_EXEC_ARN = 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
 
@@ -69,21 +70,29 @@ function dataPolicy(appName: string): string {
         Resource: `arn:aws:secretsmanager:*:*:secret:${appName}-*`,
       },
       {
-        // PutEvents targets the bus, not a rule — default bus isn't app-scopable by ARN.
+        // X-Ray tracing (functions with `tracing: true`) — not resource-scopable.
         Effect: 'Allow',
-        Action: 'events:PutEvents',
+        Action: ['xray:PutTraceSegments', 'xray:PutTelemetryRecords'],
         Resource: '*',
       },
     ],
   })
 }
 
-export async function ensureExecRole(iam: IAMClient, appName: string): Promise<string> {
+export async function ensureExecRole(
+  iam: IAMClient,
+  appName: string,
+  tags: Record<string, string>,
+): Promise<string> {
   const roleName = `${appName}-exec`
   let arn: string
   try {
     const r = await iam.send(
-      new CreateRoleCommand({ RoleName: roleName, AssumeRolePolicyDocument: TRUST_POLICY }),
+      new CreateRoleCommand({
+        RoleName: roleName,
+        AssumeRolePolicyDocument: TRUST_POLICY,
+        Tags: asTagArray(tags),
+      }),
     )
     arn = r.Role!.Arn!
   } catch (e) {

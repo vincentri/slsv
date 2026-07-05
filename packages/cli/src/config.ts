@@ -18,6 +18,11 @@ const FunctionConfig = z.object({
   timeout: z.number().int().min(1).max(900).optional(), // seconds (Lambda hard limit 900)
   memory: z.number().int().min(128).max(10240).optional(), // MB, 1MB steps
   environment: z.record(z.string()).optional(), // custom env vars (bindings still win)
+  architecture: z.enum(['x86_64', 'arm64']).optional(), // default arm64 (cheaper + faster)
+  ephemeralStorage: z.number().int().min(512).max(10240).optional(), // /tmp size MB (default 512)
+  tracing: z.boolean().optional(), // X-Ray active tracing
+  reservedConcurrency: z.number().int().min(0).optional(), // cap concurrent executions
+  provisionedConcurrency: z.number().int().min(1).optional(), // pre-warmed instances (aws only, via `live` alias)
 })
 
 const QueueConfig = z.object({
@@ -54,6 +59,7 @@ const SqlConfig = z.object({
   instanceClass: z.string().optional(), // RDS instance class, default 'db.t3.micro'
   storage: z.number().int().min(20).max(65536).optional(), // GB, default 20
   multiAz: z.boolean().optional(), // default false
+  skipFinalSnapshot: z.boolean().optional(), // on destroy: skip final snapshot (default true)
 })
 
 const DatabaseConfig = z.discriminatedUnion('type', [DynamoDbConfig, SqlConfig])
@@ -67,18 +73,43 @@ const CacheConfig = z.object({
 const FrontendConfig = z.object({
   src: z.string(),
   build: z.string().optional(),
+  // Serve the frontend + /api/* through one HTTPS CloudFront domain instead of the
+  // HTTP-only S3 website endpoint. aws-only; ~15-20 min to deploy/destroy. Default false.
   cloudfront: z.boolean().optional(),
 })
+
+const BucketConfig = z
+  .object({
+    // Browser/users fetch objects directly via the bucket URL without a Lambda hop.
+    // Applies a bucket policy granting s3:GetObject to Principal '*' and disables
+    // the four public-access blocks. Skip for private data.
+    publicRead: z.boolean().optional(),
+    // Origins allowed to call this bucket from a browser (presigned PUT/GET, direct fetch).
+    // Empty/omitted = no CORS rules. '*' is allowed but only pair it with publicRead,
+    // never with private buckets.
+    cors: z.array(z.string()).optional(),
+  })
+  .strict()
 
 const AppConfig = z.object({
   app: z.string(),
   functions: z.record(FunctionConfig).optional(),
   queues: z.record(QueueConfig).optional(),
-  buckets: z.record(z.object({})).optional(),
+  buckets: z.record(BucketConfig).optional(),
   databases: z.record(DatabaseConfig).optional(),
   caches: z.record(CacheConfig).optional(),
   secrets: z.array(z.string()).optional(),
   frontend: FrontendConfig.optional(),
+  tags: z.record(z.string()).optional(), // custom tags merged onto every resource
+  // CloudWatch log retention in days (default 14). 0 = never expire. Must be a value
+  // CloudWatch accepts, else the log group would reject the retention policy.
+  logRetentionDays: z
+    .union(
+      [0, 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653].map(
+        (n) => z.literal(n),
+      ) as [z.ZodLiteral<number>, z.ZodLiteral<number>, ...z.ZodLiteral<number>[]],
+    )
+    .optional(),
 })
 
 export type AppConfig = z.infer<typeof AppConfig>
@@ -117,6 +148,14 @@ export function loadConfig(cwd: string = process.cwd(), stage = 'dev'): AppConfi
   const { stages, ...base } = parsed
   const overlay = stages?.[stage]
   const merged = overlay ? deepMerge(base, overlay) : base
+  // Allow bare `uploads:` (YAML null) to mean `uploads: {}`. Stage overlays still use
+  // `uploads: null` to REMOVE a bucket — deepMerge runs first, so the key is already
+  // gone by the time we normalize here.
+  if (merged.buckets && typeof merged.buckets === 'object') {
+    for (const [k, v] of Object.entries(merged.buckets)) {
+      if (v === null) merged.buckets[k] = {}
+    }
+  }
   try {
     return AppConfig.parse(merged)
   } catch (e) {

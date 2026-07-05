@@ -57,8 +57,7 @@ buckets:
 caches:
   links:
     type: valkey
-  ratelimit:
-    type: valkey
+    nodeType: cache.t4g.micro
 
 secrets:
   - WEBHOOK_SECRET

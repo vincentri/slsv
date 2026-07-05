@@ -14,6 +14,7 @@ export async function ensureQueues(
   sqs: SQSClient,
   queues: AppConfig['queues'],
   appName: string,
+  tags: Record<string, string>,
 ): Promise<Record<string, QueueOutput>> {
   const outputs: Record<string, QueueOutput> = {}
   if (!queues) return outputs
@@ -36,7 +37,7 @@ export async function ensureQueues(
 
     // ponytail: CreateQueue is idempotent on same name + attributes — no GetQueueUrl needed
     const r = await sqs.send(
-      new CreateQueueCommand({ QueueName: queueName, Attributes: attrs }),
+      new CreateQueueCommand({ QueueName: queueName, Attributes: attrs, tags }),
     )
     const queueUrl = r.QueueUrl!
 

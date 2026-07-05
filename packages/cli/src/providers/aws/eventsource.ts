@@ -1,8 +1,7 @@
 import { LambdaClient, CreateEventSourceMappingCommand } from '@aws-sdk/client-lambda'
 import type { AppConfig } from '../../config.js'
+import type { AwsFnOutput } from './functions.js'
 import type { QueueOutput } from './sqs.js'
-
-export type AwsFnOutput = { arn: string; name: string }
 
 export async function ensureEventSourceMappings(
   lambda: LambdaClient,

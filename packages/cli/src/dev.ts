@@ -8,6 +8,7 @@ import { bundleHandler } from './bundle.js'
 
 export async function startDev(cfg: AppConfig, provider: Provider, cwd: string, stage = 'dev', apiUrl?: string) {
   if (cfg.frontend) {
+    // ponytail: assumes pnpm. slsv's own repo is pnpm; users on npm/yarn can edit this line.
     const frontendSrcDir = path.resolve(cwd, cfg.frontend.src)
     const frontendDir = existsSync(path.join(frontendSrcDir, 'package.json'))
       ? frontendSrcDir

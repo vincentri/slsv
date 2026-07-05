@@ -1,6 +1,7 @@
 import {
   ApiGatewayV2Client,
   CreateApiCommand,
+  UpdateApiCommand,
   CreateIntegrationCommand,
   CreateRouteCommand,
   CreateStageCommand,
@@ -10,6 +11,7 @@ import {
   GetStagesCommand,
   UpdateIntegrationCommand,
   UpdateRouteCommand,
+  DeleteApiCommand,
 } from '@aws-sdk/client-apigatewayv2'
 import { AddPermissionCommand, LambdaClient } from '@aws-sdk/client-lambda'
 import type { AppConfig } from '../../config.js'
@@ -17,12 +19,21 @@ import type { AwsFnOutput } from './functions.js'
 
 const FLOCI_ENDPOINT = 'http://localhost:4566'
 
+// Delete the HTTP API for this app+stage (the API is named `appName`). Deleting the API
+// cascades its routes, integrations and stages. No-op if it doesn't exist.
+export async function deleteHttpApi(apigw: ApiGatewayV2Client, appName: string): Promise<void> {
+  const apis = await apigw.send(new GetApisCommand({}))
+  const api = apis.Items?.find((a) => a.Name === appName)
+  if (api?.ApiId) await apigw.send(new DeleteApiCommand({ ApiId: api.ApiId }))
+}
+
 export async function ensureApiGateway(
   apigw: ApiGatewayV2Client,
   lambda: LambdaClient,
   functions: NonNullable<AppConfig['functions']>,
   outputs: Record<string, AwsFnOutput>,
   appName: string,
+  isLocal: boolean,
 ): Promise<string | undefined> {
   const httpFunctions = Object.entries(functions).filter(([, fn]) => fn.http?.length)
   if (httpFunctions.length === 0) return undefined
@@ -57,18 +68,31 @@ export async function ensureApiGateway(
     }
   }
 
-  return localApiEndpoint(api.ApiId, api.ApiEndpoint)
+  // Floci and real AWS both return `<id>.execute-api.<region>.amazonaws.com` ApiEndpoints,
+  // so the endpoint string can't tell them apart — use the target. Real AWS: the ApiEndpoint
+  // works directly. Floci: it doesn't resolve from the host, so use the Floci path.
+  if (!isLocal) return api.ApiEndpoint
+  return `${FLOCI_ENDPOINT}/execute-api/${api.ApiId}/$default`
 }
 
 async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string) {
+  // CORS so the S3-hosted frontend (different origin) can call the API. `*` is permissive;
+  // tighten to the frontend origin later if needed.
+  const cors = { AllowOrigins: ['*'], AllowMethods: ['*'], AllowHeaders: ['*'] }
+
   const existing = await apigw.send(new GetApisCommand({}))
   const found = existing.Items?.find((api) => api.Name === appName)
-  if (found) return found
+  if (found) {
+    // Ensure CORS on an API created before this was added.
+    await apigw.send(new UpdateApiCommand({ ApiId: found.ApiId, CorsConfiguration: cors }))
+    return found
+  }
 
   return apigw.send(
     new CreateApiCommand({
       Name: appName,
       ProtocolType: 'HTTP',
+      CorsConfiguration: cors,
     }),
   )
 }
@@ -150,8 +174,13 @@ async function allowApiGatewayInvoke(
   routeKey: string,
   functionArn: string,
 ) {
-  const statementId = permissionStatementId(appName, apiId, routeKey)
-  const sourceArn = `arn:aws:execute-api:us-east-1:000000000000:${apiId}/*/*`
+  const statementId = `${appName}-${apiId}-${routeKey}`.replace(/[^A-Za-z0-9-_]/g, '-')
+  // Derive region + account from the function ARN so the permission matches the REAL API on
+  // any account/region — a hardcoded us-east-1:000000000000 only matches Floci, so on real
+  // AWS API Gateway can't invoke the Lambda (→ 500, no invocation log).
+  // arn:aws:lambda:<region>:<account>:function:<name>
+  const [, , , region, account] = functionArn.split(':')
+  const sourceArn = `arn:aws:execute-api:${region}:${account}:${apiId}/*/*`
 
   try {
     await lambda.send(
@@ -163,8 +192,8 @@ async function allowApiGatewayInvoke(
         SourceArn: sourceArn,
       }),
     )
-  } catch (e) {
-    if (!isAlreadyExists(e)) throw e
+  } catch (e: any) {
+    if (e?.name !== 'ResourceConflictException') throw e
   }
 }
 
@@ -180,26 +209,4 @@ async function listRoutes(apigw: ApiGatewayV2Client, apiId: string) {
 
 function toRouteKey(method: string | undefined, path: string) {
   return `${(method ?? 'ANY').toUpperCase()} ${path}`
-}
-
-function permissionStatementId(appName: string, apiId: string, routeKey: string) {
-  return `${appName}-${apiId}-${routeKey}`.replace(/[^A-Za-z0-9-_]/g, '-').slice(0, 100)
-}
-
-function isAlreadyExists(e: unknown) {
-  return (
-    typeof e === 'object' &&
-    e !== null &&
-    'name' in e &&
-    (e as { name?: string }).name === 'ResourceConflictException'
-  )
-}
-
-function localHttpApiUrl(apiId: string) {
-  return `${FLOCI_ENDPOINT}/execute-api/${apiId}/$default`
-}
-
-function localApiEndpoint(apiId: string, endpoint: string | undefined) {
-  if (endpoint?.includes('localhost')) return endpoint
-  return localHttpApiUrl(apiId)
 }

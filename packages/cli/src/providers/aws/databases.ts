@@ -2,12 +2,15 @@ import { readFileSync } from 'fs'
 import path from 'path'
 import {
   CreateDBInstanceCommand,
+  DeleteDBInstanceCommand,
   DescribeDBInstancesCommand,
+  type CreateDBInstanceCommandInput,
   type RDSClient,
 } from '@aws-sdk/client-rds'
 import pg from 'pg'
 import mysql from 'mysql2/promise'
 import { envKey } from '../../env-key.js'
+import { asTagArray } from './tags.js'
 import type { AppConfig } from '../../config.js'
 
 // Per-engine provisioning constants. floci spins up a real DB process per instance.
@@ -33,6 +36,8 @@ export async function ensureDbInstances(
   databases: AppConfig['databases'],
   appName: string,
   cwd: string,
+  tags: Record<string, string>,
+  local: boolean,
 ): Promise<Record<string, string>> {
   const envVars: Record<string, string> = {}
   if (!databases) return envVars
@@ -43,23 +48,24 @@ export async function ensureDbInstances(
     const instanceId = `${appName}-${name}`
     const dbName = cfg.name ?? name
 
+    const createInput: CreateDBInstanceCommandInput = {
+      DBInstanceIdentifier: instanceId,
+      Engine: engine,
+      DBName: dbName,
+      MasterUsername: ec.masterUser,
+      MasterUserPassword: ec.masterPass,
+      // ponytail: knobs apply on --target aws; floci runs single-instance regardless.
+      DBInstanceClass: cfg.instanceClass ?? 'db.t3.micro',
+      AllocatedStorage: cfg.storage ?? 20,
+      MultiAZ: cfg.multiAz ?? false,
+      Tags: asTagArray(tags),
+    }
+
     const existing = await describeInstance(client, instanceId)
-    const created = !existing
+    let created = !existing
     if (!existing) {
       try {
-        await client.send(
-          new CreateDBInstanceCommand({
-            DBInstanceIdentifier: instanceId,
-            Engine: engine,
-            DBName: dbName,
-            MasterUsername: ec.masterUser,
-            MasterUserPassword: ec.masterPass,
-            // ponytail: knobs apply on --target aws; floci runs single-instance regardless.
-            DBInstanceClass: cfg.instanceClass ?? 'db.t3.micro',
-            AllocatedStorage: cfg.storage ?? 20,
-            MultiAZ: cfg.multiAz ?? false,
-          }),
-        )
+        await client.send(new CreateDBInstanceCommand(createInput))
       } catch (e: any) {
         // Race: created between our describe + create — not fatal, proceed to describe.
         if (e.name !== 'DBInstanceAlreadyExists') throw e
@@ -67,10 +73,34 @@ export async function ensureDbInstances(
     }
 
     let inst = await waitForAvailable(client, instanceId)
-    const addr = inst?.Endpoint?.Address
-    const port = inst?.Endpoint?.Port ?? ec.port
+    let addr = inst?.Endpoint?.Address
+    let port = inst?.Endpoint?.Port ?? ec.port
     if (!addr)
       throw new Error(`databases.${name}: could not resolve RDS endpoint for ${instanceId}`)
+
+    // ponytail: --target local only. Floci's RDS registry can desync from container lifecycle
+    // (an instance reads `available` after a Floci restart that killed its container) — the
+    // endpoint resolves but refuses connections. Verify reachability; if dead, recreate so
+    // Floci respawns the container (and re-run init_sql on the fresh DB). AWS is never touched:
+    // a real `available` instance is reachable, and TCP-dialing it from the CLI host would
+    // false-negative through the VPC and wrongly rebuild a live prod DB. Same treatment as
+    // redis.ts. Remove once Floci keeps its RDS registry in sync with container lifecycle.
+    if (local && !(await isDbAlive(engine, ec, addr, port, dbName))) {
+      await client
+        .send(new DeleteDBInstanceCommand({ DBInstanceIdentifier: instanceId, SkipFinalSnapshot: true }))
+        .catch(() => {})
+      await waitForGone(client, instanceId)
+      await client.send(new CreateDBInstanceCommand(createInput)).catch((e: any) => {
+        if (e.name !== 'DBInstanceAlreadyExists') throw e
+      })
+      inst = await waitForAvailable(client, instanceId)
+      addr = inst?.Endpoint?.Address
+      port = inst?.Endpoint?.Port ?? ec.port
+      if (!addr)
+        throw new Error(`databases.${name}: could not resolve RDS endpoint for ${instanceId}`)
+      created = true // fresh DB → init_sql must re-run
+    }
+
     const url = `${ec.scheme}://${ec.masterUser}:${ec.masterPass}@${addr}:${port}/${dbName}`
     envVars[envKey('DATABASE', name)] = url
 
@@ -81,6 +111,53 @@ export async function ensureDbInstances(
     }
   }
   return envVars
+}
+
+// Liveness check: a *real* DB handshake (SELECT 1), NOT a TCP connect — Floci fronts the RDS
+// port itself, so a bare socket connects even when the backing container is dead. Only a
+// protocol-level query distinguishes a live DB from a desynced one. Retries to avoid a false
+// negative on an instance that just flipped `available` but isn't accepting its first
+// connection yet.
+async function isDbAlive(
+  engine: SqlEngine,
+  ec: (typeof ENGINE_CFG)[SqlEngine],
+  host: string,
+  port: number,
+  dbName: string,
+  attempts = 3,
+): Promise<boolean> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      if (engine === 'postgres') {
+        const c = new pg.Client({
+          host, port, user: ec.masterUser, password: ec.masterPass,
+          database: dbName, connectionTimeoutMillis: 3000,
+        })
+        await c.connect()
+        try { await c.query('select 1') } finally { await c.end() }
+      } else {
+        const c = await mysql.createConnection({
+          host, port, user: ec.masterUser, password: ec.masterPass,
+          database: dbName, connectTimeout: 3000,
+        })
+        try { await c.query('select 1') } finally { await c.end() }
+      }
+      return true
+    } catch {
+      if (i < attempts - 1) await sleep(1000)
+    }
+  }
+  return false
+}
+
+// Poll DescribeDBInstances until the instance is gone after a delete, so the recreate doesn't
+// race an in-flight teardown. ponytail: proceed on timeout — recreate swallows AlreadyExists.
+async function waitForGone(client: RDSClient, instanceId: string, maxMs = 30_000) {
+  const start = Date.now()
+  while (Date.now() - start < maxMs) {
+    if (!(await describeInstance(client, instanceId))) return
+    await sleep(1000)
+  }
 }
 
 async function describeInstance(client: RDSClient, instanceId: string) {

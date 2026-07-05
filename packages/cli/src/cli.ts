@@ -133,33 +133,12 @@ program
   .description('Tail CloudWatch logs for a function')
   .option('-f, --follow', 'Follow log output', false)
   .option('--stage <name>', 'deployment stage', 'dev')
-  .action(async (fnName: string, opts: { follow: boolean; stage: string }) => {
-    const stage = validStage(opts.stage)
-    const cfg = loadConfig(process.cwd(), stage)
-    const provider = new AwsProvider('local')
-    await provider.tailLogs(`${cfg.app}-${stage}-${fnName}`, opts.follow)
-  })
-
-program
-  .command('status')
-  .description('List resources currently deployed for this app + stage')
-  .option('--stage <name>', 'deployment stage', 'dev')
   .option('--target <target>', 'local or aws', 'local')
-  .action(async (opts: { stage: string; target: 'local' | 'aws' }) => {
+  .action(async (fnName: string, opts: { follow: boolean; stage: string; target: 'local' | 'aws' }) => {
     const stage = validStage(opts.stage)
     const cfg = loadConfig(process.cwd(), stage)
     const provider = new AwsProvider(opts.target)
-    const groups = await provider.status(cfg, stage)
-    console.log(`\n${cfg.app} (stage: ${stage})`)
-    let total = 0
-    for (const [type, names] of Object.entries(groups)) {
-      if (names.length === 0) continue
-      total += names.length
-      console.log(`\n  ${type} (${names.length})`)
-      for (const n of names) console.log(`    ${n}`)
-    }
-    if (total === 0) console.log('\n  Nothing deployed. Run `slsv deploy`.')
-    console.log('')
+    await provider.tailLogs(`${cfg.app}-${stage}-${fnName}`, opts.follow)
   })
 
 program
@@ -167,12 +146,29 @@ program
   .description("Delete this app's slsv.yml resources (Lambda/Dynamo/S3/SQS/secrets/caches/db).")
   .option('--stage <name>', 'deployment stage to destroy', 'dev')
   .option('--target <target>', 'local or aws', 'local')
-  .action(async (opts: { stage: string; target: 'local' | 'aws' }) => {
+  .option('-y, --yes', 'Skip confirmation prompt', false)
+  .action(async (opts: { stage: string; target: 'local' | 'aws'; yes: boolean }) => {
     const cwd = process.cwd()
     const stage = validStage(opts.stage)
     const cfg = loadConfig(cwd, stage)
+
+    if (!opts.yes) {
+      if (!process.stdout.isTTY) {
+        console.error('Non-interactive: pass --yes to confirm destroy.')
+        process.exit(1)
+      }
+      const { confirm, isCancel } = await import('@clack/prompts')
+      const ok = await confirm({
+        message: `Destroy ${cfg.app}-${stage}-* on ${opts.target}?`,
+      })
+      if (isCancel(ok) || !ok) {
+        console.log('Cancelled.')
+        return
+      }
+    }
+
     const provider = new AwsProvider(opts.target)
-    console.log(`Deleting ${opts.target} resources for app "${cfg.app}" (stage: ${stage})...`)
+    console.log(`Deleting ${cfg.app}-${stage}-* on ${opts.target}...`)
     await provider.destroyResources(cfg, stage)
     console.log('Resources deleted.')
     // Only the local emulator is ours to stop; on --target aws there's nothing to stop.

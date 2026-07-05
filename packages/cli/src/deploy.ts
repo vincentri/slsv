@@ -1,6 +1,7 @@
 import type { AppConfig } from './config.js'
 import type { Provider } from './providers/types.js'
 import { config as dotenv } from 'dotenv'
+import { slsvTags } from './providers/aws/tags.js'
 import path from 'path'
 
 export type DeployOutputs = {
@@ -33,7 +34,8 @@ export async function deploy(
 
   let apiUrl: string | undefined
   if (hasBackend) {
-    await provider.setup(prefix, Object.keys(functions))
+    const tags = slsvTags(cfg.app, stage, cfg.tags)
+    await provider.setup(prefix, Object.keys(functions), tags, cfg.logRetentionDays ?? 14)
 
     console.log('→ Storage, messaging & caches')
     const [bucketEnvs, queueEnvs, secretEnvs, cacheEnvs, dbEnvs] = await Promise.all([
@@ -60,7 +62,7 @@ export async function deploy(
 
   // In dev mode, Vite handles the frontend — skip static file server
   const frontendUrl =
-    mode === 'dev' ? undefined : await provider.deployFrontend(cfg.frontend, prefix, cwd)
+    mode === 'dev' ? undefined : await provider.deployFrontend(cfg.frontend, prefix, cwd, apiUrl)
 
   console.log('\nDone.')
   return { apiUrl, frontendUrl }

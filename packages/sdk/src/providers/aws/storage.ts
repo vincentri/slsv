@@ -5,6 +5,7 @@ import {
   ListObjectsV2Command,
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type { StorageClient } from '../../types.js'
 
 const s3 = new S3Client({ forcePathStyle: true })
@@ -44,6 +45,28 @@ export function makeStorage(bucket: string): StorageClient {
 
     async delete(key) {
       await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+    },
+
+    async getSignedUrl(key, opts) {
+      // ponytail: presigner and client-s3 ship different Client<> generics when
+      // their @smithy/types versions drift; the runtime shape is identical, so cast.
+      return getSignedUrl(
+        s3 as any,
+        new GetObjectCommand({ Bucket: bucket, Key: key }),
+        { expiresIn: opts?.expiresIn ?? 900 },
+      )
+    },
+
+    async putSignedUrl(key, opts) {
+      return getSignedUrl(
+        s3 as any,
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          ContentType: opts?.contentType,
+        }),
+        { expiresIn: opts?.expiresIn ?? 900 },
+      )
     },
   }
 }

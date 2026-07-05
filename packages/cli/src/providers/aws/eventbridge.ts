@@ -1,8 +1,8 @@
 import { EventBridgeClient, PutRuleCommand, PutTargetsCommand } from '@aws-sdk/client-eventbridge'
 import { LambdaClient, AddPermissionCommand } from '@aws-sdk/client-lambda'
+import { asTagArray } from './tags.js'
+import type { AwsFnOutput } from './functions.js'
 import type { AppConfig } from '../../config.js'
-
-export type AwsFnOutput = { arn: string; name: string }
 
 // Convert 5-field unix cron to 6-field AWS cron
 // EventBridge requires exactly one of dom/dow to be ? when both are wildcards
@@ -26,6 +26,7 @@ export async function ensureEventTriggers(
   functions: AppConfig['functions'],
   fnOutputs: Record<string, AwsFnOutput>,
   appName: string,
+  tags: Record<string, string>,
 ) {
   for (const [fnName, fn] of Object.entries(functions ?? {})) {
     if (!fn.event) continue
@@ -38,6 +39,7 @@ export async function ensureEventTriggers(
         Name: ruleName,
         EventPattern: JSON.stringify(fn.event.pattern),
         State: 'ENABLED',
+        Tags: asTagArray(tags),
       }),
     )
 
@@ -55,7 +57,7 @@ export async function ensureEventTriggers(
           StatementId: `events-${ruleName}`,
           Action: 'lambda:InvokeFunction',
           Principal: 'events.amazonaws.com',
-          SourceArn: `arn:aws:events:us-east-1:000000000000:rule/${ruleName}`,
+          SourceArn: `arn:aws:events:${fnOutput.arn.split(':')[3]}:${fnOutput.arn.split(':')[4]}:rule/${ruleName}`,
         }),
       )
     } catch (e: any) {
@@ -70,6 +72,7 @@ export async function ensureCronTriggers(
   functions: AppConfig['functions'],
   fnOutputs: Record<string, AwsFnOutput>,
   appName: string,
+  tags: Record<string, string>,
 ) {
   for (const [fnName, fn] of Object.entries(functions ?? {})) {
     if (!fn.cron) continue
@@ -81,6 +84,7 @@ export async function ensureCronTriggers(
         Name: ruleName,
         ScheduleExpression: toAwsCron(fn.cron.schedule),
         State: 'ENABLED',
+        Tags: asTagArray(tags),
       }),
     )
 
@@ -98,7 +102,7 @@ export async function ensureCronTriggers(
           StatementId: `events-${ruleName}`,
           Action: 'lambda:InvokeFunction',
           Principal: 'events.amazonaws.com',
-          SourceArn: `arn:aws:events:us-east-1:000000000000:rule/${ruleName}`,
+          SourceArn: `arn:aws:events:${fnOutput.arn.split(':')[3]}:${fnOutput.arn.split(':')[4]}:rule/${ruleName}`,
         }),
       )
     } catch (e: any) {

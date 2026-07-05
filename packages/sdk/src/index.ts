@@ -2,9 +2,7 @@ import type { Provider, DbClient, QueueClient, StorageClient, CacheClient } from
 export {
   json,
   redirect,
-  request,
   router,
-  text,
   type ApiHandler,
   type ApiRequest,
   type ApiResponse,

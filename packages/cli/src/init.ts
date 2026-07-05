@@ -36,6 +36,7 @@ export function initScaffold(
         path.join(dir, 'frontend/src/main.ts'),
         hasBackend ? FRONTEND_MAIN_FULLSTACK : FRONTEND_MAIN_STANDALONE,
       )
+      writeFileSync(path.join(dir, 'frontend/src/vite-env.d.ts'), FRONTEND_VITE_ENV_DTS)
     }
     if (!hasBackend) {
       writeFileSync(path.join(dir, '.env.example'), FRONTEND_ENV_EXAMPLE)
@@ -73,12 +74,8 @@ function sdkDependency(dir: string) {
 
 function demoTemplateDir() {
   const here = path.dirname(fileURLToPath(import.meta.url))
-  const dirs = [
-    path.resolve(here, '../templates/demo'),
-    path.resolve(here, '../../../examples/demo'),
-  ]
-  const dir = dirs.find(existsSync)
-  if (!dir) throw new Error('Demo template not found. Run from repo or build templates.')
+  const dir = path.resolve(here, '../templates/demo')
+  if (!existsSync(dir)) throw new Error('Demo template not found. Run from repo or build templates.')
   return dir
 }
 
@@ -283,8 +280,25 @@ app.innerHTML = '<h1>Hello from slsv</h1>'
 const FRONTEND_MAIN_FULLSTACK = `const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = '<h1>Loading…</h1>'
 
-fetch('/api/health')
+// API base: your VITE_API_URL wins; else slsv injects the deployed API Gateway URL as
+// VITE_SLSV_API_URL at build; else '' (relative → local \`slsv dev\` proxies /api).
+const API = import.meta.env.VITE_API_URL || import.meta.env.VITE_SLSV_API_URL || ''
+
+fetch(\`\${API}/api/health\`)
   .then(r => r.json())
   .then(data => { app.innerHTML = \`<h1>API says: \${JSON.stringify(data)}</h1>\` })
   .catch(() => { app.innerHTML = '<h1>API unreachable — is slsv dev running?</h1>' })
+`
+
+// Vite env typings so import.meta.env.VITE_* typechecks. Written to src/vite-env.d.ts.
+const FRONTEND_VITE_ENV_DTS = `/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_API_URL?: string
+  readonly VITE_SLSV_API_URL?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
 `
