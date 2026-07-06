@@ -14,6 +14,7 @@ export {
   type ApiRequest,
   type ApiResponse,
   type LambdaEvent,
+  type Middleware,
   type Route,
 } from './api.js'
 

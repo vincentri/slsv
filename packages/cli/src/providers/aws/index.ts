@@ -51,6 +51,15 @@ const LOCAL_ENDPOINT = 'http://localhost:4566'
 // It must reach Floci's AWS APIs via the docker host (same trick as the redis endpoint).
 const LAMBDA_LOCAL_ENDPOINT = 'http://host.docker.internal:4566'
 
+// ponytail: Docker CLI + floci-<prefix><fn> naming; drop once Floci stops the container
+// on DeleteFunction.
+function killFlociContainers(prefix: string) {
+  const ids = execFileSync('docker', ['ps', '-aq', '--filter', `name=floci-${prefix}`], {
+    encoding: 'utf8',
+  }).trim()
+  if (ids) execFileSync('docker', ['rm', '-f', ...ids.split('\n')], { stdio: 'ignore' })
+}
+
 // Drain a token-paginated AWS list call. Each SDK uses a different token field, so the
 // caller adapts request/response tokens; this just loops until there's no next token.
 export async function paginate<T>(
@@ -288,14 +297,10 @@ export class AwsProvider {
     // lifecycle isn't tied to its API (same registry-vs-container desync as RDS/valkey). Sweep
     // them by name so `slsv destroy --target local` actually stops them. `name=floci-<app>-
     // <stage>-` matches only this stack's lambda containers (rds/valkey use floci-rds-/
-    // floci-valkey- prefixes). ponytail: Docker CLI + floci-<app>-<stage>-<fn> naming; drop
-    // once Floci stops the container on DeleteFunction.
+    // floci-valkey- prefixes).
     if (this.target === 'local') {
-      await step('Floci containers', async () => {
-        const ids = execFileSync('docker', ['ps', '-aq', '--filter', `name=floci-${appName}-`], {
-          encoding: 'utf8',
-        }).trim()
-        if (ids) execFileSync('docker', ['rm', '-f', ...ids.split('\n')], { stdio: 'ignore' })
+      await step('Floci containers', () => {
+        killFlociContainers(`${appName}-`)
       })
     }
 
@@ -375,16 +380,10 @@ export class AwsProvider {
         // --target local: Floci leaves the Lambda CONTAINER running after DeleteFunction (its
         // container lifecycle isn't tied to its API — same desync destroy sweeps). Without this
         // the API "removed" the fn but the container keeps executing (a pruned cron/queue fn
-        // still fires) → "lambda not removed". Sweep its container by name. ponytail: Docker CLI
-        // + floci-<prefix><fn> naming; drop once Floci stops the container on DeleteFunction.
+        // still fires) → "lambda not removed". Sweep its container by name.
         if (this.target === 'local') {
           try {
-            const ids = execFileSync(
-              'docker',
-              ['ps', '-aq', '--filter', `name=floci-${fn.FunctionName}`],
-              { encoding: 'utf8' },
-            ).trim()
-            if (ids) execFileSync('docker', ['rm', '-f', ...ids.split('\n')], { stdio: 'ignore' })
+            killFlociContainers(fn.FunctionName)
           } catch {
             // docker missing / nothing to remove — best-effort, never fail reconcile
           }

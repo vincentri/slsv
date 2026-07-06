@@ -10,6 +10,14 @@ export type DeployOutputs = {
   frontendUrl?: string
 }
 
+const hasResources = (cfg: AppConfig) =>
+  Object.keys(cfg.functions ?? {}).length > 0 ||
+  Object.keys(cfg.databases ?? {}).length > 0 ||
+  Object.keys(cfg.queues ?? {}).length > 0 ||
+  Object.keys(cfg.buckets ?? {}).length > 0 ||
+  Object.keys(cfg.caches ?? {}).length > 0 ||
+  (cfg.secrets?.length ?? 0) > 0
+
 export async function deploy(
   cfg: AppConfig,
   provider: AwsProvider,
@@ -30,26 +38,14 @@ export async function deploy(
   lintApp(cfg, cwd)
 
   const functions = cfg.functions ?? {}
-  const hasBackend =
-    Object.keys(functions).length > 0 ||
-    !!cfg.databases ||
-    !!cfg.queues ||
-    !!cfg.buckets ||
-    !!cfg.caches ||
-    (cfg.secrets?.length ?? 0) > 0
+  const hasBackend = hasResources(cfg)
 
   let apiUrl: string | undefined
   if (hasBackend) {
     const tags = slsvTags(cfg.app, stage, cfg.tags)
     await provider.setup(prefix, Object.keys(functions), tags, cfg.logRetentionDays ?? 14)
 
-    const hasStores =
-      Object.keys(cfg.databases ?? {}).length > 0 ||
-      Object.keys(cfg.queues ?? {}).length > 0 ||
-      Object.keys(cfg.buckets ?? {}).length > 0 ||
-      Object.keys(cfg.caches ?? {}).length > 0 ||
-      (cfg.secrets?.length ?? 0) > 0
-    if (hasStores) console.log('→ Storage, messaging & caches')
+    if (hasResources(cfg)) console.log('→ Storage, messaging & caches')
     const [bucketEnvs, queueEnvs, secretEnvs, cacheEnvs, dbEnvs] = await Promise.all([
       provider.ensureBuckets(cfg.buckets, prefix),
       provider.ensureQueues(cfg.queues, prefix),

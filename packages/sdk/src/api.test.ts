@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { json, redirect, request, router } from './api.js'
+import { json, redirect, request, router, type Middleware } from './api.js'
 
 describe('api helpers', () => {
   it('normalizes HTTP API v2 events', () => {
@@ -61,5 +61,38 @@ describe('api helpers', () => {
   it('builds common responses', () => {
     expect(json({ ok: true }).headers['content-type']).toBe('application/json')
     expect(redirect('/login').headers.location).toBe('/login')
+  })
+
+  it('runs global + per-route middleware in onion order', async () => {
+    const order: string[] = []
+    const global: Middleware = async (_req, next) => {
+      order.push('global-in')
+      const res = await next()
+      order.push('global-out')
+      return res
+    }
+    const routeMw: Middleware = async (_req, next) => {
+      order.push('route-in')
+      return next()
+    }
+    const handle = router(
+      [{ path: '/api/ok', handler: () => { order.push('handler'); return json({ ok: true }) }, middleware: [routeMw] }],
+      [global],
+    )
+    const res = await handle({ rawPath: '/api/ok', requestContext: { http: { method: 'GET' } } })
+    expect(res.statusCode).toBe(200)
+    expect(order).toEqual(['global-in', 'route-in', 'handler', 'global-out'])
+  })
+
+  it('middleware can short-circuit without calling the handler (auth)', async () => {
+    let handlerRan = false
+    const requireAuth: Middleware = (req, next) =>
+      req.headers.authorization ? next() : json({ error: 'unauthorized' }, 401)
+    const handle = router([
+      { path: '/api/secret', handler: () => { handlerRan = true; return json({ ok: true }) }, middleware: [requireAuth] },
+    ])
+    const res = await handle({ rawPath: '/api/secret', requestContext: { http: { method: 'GET' } } })
+    expect(res.statusCode).toBe(401)
+    expect(handlerRan).toBe(false)
   })
 })

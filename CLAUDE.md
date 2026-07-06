@@ -70,6 +70,19 @@ slsv injects `DATABASE_<NAME>`, `QUEUE_<NAME>`, `BUCKET_<NAME>`, `REDIS_<NAME>` 
 
 Handlers import `@slsv/sdk`, never raw `@aws-sdk/*`. `db('invoices')` → resolves `DATABASE_INVOICES` env → DynamoDBDocumentClient. Same for `queue()`, `storage()`, `cache()`. `queue().send(body, { delaySeconds })` maps to the SQS `DelaySeconds` (0-900); ponytail: standard queues only — FIFO rejects per-message delay (set it on the queue).
 
+**HTTP layer (`sdk/src/api.ts`)** — a zero-dep mini-framework so handlers don't pull Hono/Nest:
+`router(routes, middleware?)` dispatches Lambda events (parses BOTH APIGW v1 `httpMethod`/`path`
+and v2 `requestContext.http` shapes) → `request()` builds a normalized `ApiRequest` (lowercased
+headers, query, path params `{id}` + greedy `{id+}`, JSON body); `json()`/`redirect()` build
+responses. Errors: bad JSON → 400, uncaught → 500, no match → 404. **Middleware** is onion-model
+(`Middleware = (req, next) => ApiResponse`): call `next()` to continue, or return a response to
+short-circuit (auth guard: `req.headers.authorization ? next() : json(…,401)`). Global chain via
+`router(routes, [mw])` + per-route `route.middleware`, run global→route→handler→unwind
+(`compose()`; guards double-`next()`). Runs only for a MATCHED route — a 404 never enters the
+chain. ponytail: `request()` parses body eagerly, so bad JSON → 400 before middleware sees it
+(auth can't run auth-before-parse yet). Gaps vs Hono, add when hit: route groups/basePath,
+non-JSON body (form/multipart), zod validation hook, cookies. Tested in `api.test.ts`.
+
 **DynamoDB and SQL are different data models, so different accessors.** `db(name)` is the
 DynamoDB KV client (get/put/query-by-partition — `DbClient` in `types.ts`). SQL databases
 (`type: postgres|mysql`) use **`sql(name, { schema? })`** (`providers/aws/sql.ts` →
@@ -386,7 +399,7 @@ into the Lambda, but the app's `npm install`/typecheck needs the dep resolvable.
 | `packages/cli/src/config.ts`                  | zod schema for slsv.yml                                                                                                                                                                          |
 | `packages/cli/src/providers/aws/index.ts`     | AwsProvider — deploy + destroy + reconcile                                                                                                                                                      |
 | `packages/cli/src/providers/aws/index.ts` | Floci endpoint health check                                                                                                                                                                 |
-| `packages/cli/src/providers/aws/functions.ts` | esbuild bundle → zip → Lambda deploy                                                                                                                                                             |
+| `packages/cli/src/providers/aws/functions.ts` | esbuild bundle → zip → Lambda deploy (bounded-parallel, `mapLimit` concurrency 8 — each fn blocks on `waitUntilFunctionUpdatedV2` up to 120s, so serial deploy scaled linearly with fn count) |
 | `packages/cli/src/deploy.ts`                  | orchestration order                                                                                                                                                                              |
 | `packages/cli/src/lint.ts`                    | `lintApp` — preflight: slsv.yml ↔ code (handler/export exists, SDK names declared, triggers resolve)                                                                                             |
 | `packages/cli/src/init.ts`                    | scaffold templates (minimal + demo)                                                                                                                                                              |
@@ -433,7 +446,7 @@ would otherwise treat as aws) is rejected too.
 - No raw `@aws-sdk` in handler code — always via `@slsv/sdk`
 - SQL: postgres/mysql provisioned via the RDS API (init_sql runs once on first creation); hosted/BYO DB → connection string in `secrets:`, connect with your own driver/ORM
 - Mark deliberate shortcuts with `// ponytail:` comment + ceiling + upgrade path
-- esbuild bundles handlers to CJS with `bundle: true` and NO externals — `@slsv/sdk` AND `@aws-sdk/*` are inlined into one self-contained `handler.js` (the Floci/Lambda base image doesn't ship `lib-dynamodb`, so bundling everything is deliberate: bigger zip, always works). `@slsv/sdk` is never published/deployed separately; the `file:` link is bundle-time only.
+- esbuild bundles handlers to CJS with `bundle: true`, `minify: true` (+ `keepNames` so stack traces stay readable) and NO externals — `@slsv/sdk` AND `@aws-sdk/*` are inlined into one self-contained `handler.js` (the Floci/Lambda base image doesn't ship `lib-dynamodb`, so bundling everything is deliberate: always works). minify roughly halves the bundle (~4.8M → 2.4M — aws-sdk+drizzle dominate); `keepNames` preserves class/fn names so `instanceof`/`e.name` error checks and traces survive minification. `@slsv/sdk` is never published/deployed separately; the `file:` link is bundle-time only.
 
 ## Cleanup rule (before commit)
 

@@ -4,6 +4,12 @@ import { asTagArray } from './tags.js'
 import type { AwsFnOutput } from './functions.js'
 import type { AppConfig } from '../../config.js'
 
+// arn:aws:lambda:<region>:<account>:function:<name>
+export const arnRegionAccount = (arn: string) => {
+  const [, , , region, account] = arn.split(':')
+  return { region, account }
+}
+
 // Convert 5-field unix cron to 6-field AWS cron
 // EventBridge requires exactly one of dom/dow to be ? when both are wildcards
 function toAwsCron(schedule: string): string {
@@ -51,13 +57,14 @@ export async function ensureEventTriggers(
     )
 
     try {
+      const { region, account } = arnRegionAccount(fnOutput.arn)
       await lambda.send(
         new AddPermissionCommand({
           FunctionName: fnOutput.name,
           StatementId: `events-${ruleName}`,
           Action: 'lambda:InvokeFunction',
           Principal: 'events.amazonaws.com',
-          SourceArn: `arn:aws:events:${fnOutput.arn.split(':')[3]}:${fnOutput.arn.split(':')[4]}:rule/${ruleName}`,
+          SourceArn: `arn:aws:events:${region}:${account}:rule/${ruleName}`,
         }),
       )
     } catch (e: any) {
@@ -96,13 +103,14 @@ export async function ensureCronTriggers(
     )
 
     try {
+      const { region, account } = arnRegionAccount(fnOutput.arn)
       await lambda.send(
         new AddPermissionCommand({
           FunctionName: fnOutput.name,
           StatementId: `events-${ruleName}`,
           Action: 'lambda:InvokeFunction',
           Principal: 'events.amazonaws.com',
-          SourceArn: `arn:aws:events:${fnOutput.arn.split(':')[3]}:${fnOutput.arn.split(':')[4]}:rule/${ruleName}`,
+          SourceArn: `arn:aws:events:${region}:${account}:rule/${ruleName}`,
         }),
       )
     } catch (e: any) {

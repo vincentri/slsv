@@ -26,6 +26,10 @@ export async function bundleHandler(
     write: false,
     // ponytail: bundle everything (incl @aws-sdk). Floci/Lambda base image
     // doesn't ship lib-dynamodb, so don't externalize. Bigger zip, always works.
+    // minify halves the bundle (~4.8M → 2.4M) — aws-sdk+drizzle dominate, so the win
+    // is real; node20 runs minified JS unchanged and stack traces stay usable via names.
+    minify: true,
+    keepNames: true,
     sourcemap: false,
     nodePaths: CLI_NODE_MODULES,
   })

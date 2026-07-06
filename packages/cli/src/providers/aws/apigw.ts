@@ -15,6 +15,7 @@ import {
 import { AddPermissionCommand, LambdaClient } from '@aws-sdk/client-lambda'
 import type { AppConfig } from '../../config.js'
 import type { AwsFnOutput } from './functions.js'
+import { arnRegionAccount } from './eventbridge.js'
 
 const FLOCI_ENDPOINT = 'http://localhost:4566'
 
@@ -179,8 +180,7 @@ async function allowApiGatewayInvoke(
   // Derive region + account from the function ARN so the permission matches the REAL API on
   // any account/region — a hardcoded us-east-1:000000000000 only matches Floci, so on real
   // AWS API Gateway can't invoke the Lambda (→ 500, no invocation log).
-  // arn:aws:lambda:<region>:<account>:function:<name>
-  const [, , , region, account] = functionArn.split(':')
+  const { region, account } = arnRegionAccount(functionArn)
   const sourceArn = `arn:aws:execute-api:${region}:${account}:${apiId}/*/*`
 
   try {

@@ -34,6 +34,22 @@ async function withRoleRetry<T>(fn: () => Promise<T>, attempts = 6, delayMs = 20
   }
 }
 
+// Bounded-concurrency map: run `worker` over `items` with at most `limit` in flight.
+// ponytail: inline pool, no p-limit dep. limit=8 stays well under Lambda's API rate; raise
+// if deploys of huge apps still bottleneck (or drop to a real limiter if backpressure matters).
+async function mapLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function run(): Promise<void> {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await worker(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run))
+  return results
+}
+
 export async function deployFunctions(
   lambda: LambdaClient,
   functions: AppConfig['functions'],
@@ -46,7 +62,10 @@ export async function deployFunctions(
 ): Promise<Record<string, AwsFnOutput>> {
   const outputs: Record<string, AwsFnOutput> = {}
 
-  for (const [name, fn] of Object.entries(functions ?? {})) {
+  // Deploy functions with bounded concurrency — each fn blocks on waitUntilFunctionUpdatedV2
+  // (up to 120s on real AWS), so a serial loop makes deploy time scale linearly with fn count.
+  const entries = Object.entries(functions ?? {})
+  const pairs = await mapLimit(entries, 8, async ([name, fn]) => {
     const fnName = `${appName}-${name}`
     console.log(`  Deploying function: ${fnName}`)
 
@@ -158,8 +177,9 @@ export async function deployFunctions(
       }
     }
 
-    outputs[name] = { arn: fnArn, name: fnName }
-  }
+    return [name, { arn: fnArn, name: fnName }] as const
+  })
 
+  for (const [name, out] of pairs) outputs[name] = out
   return outputs
 }

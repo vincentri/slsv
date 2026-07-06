@@ -47,14 +47,9 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
     storage: new Set(Object.keys(cfg.buckets ?? {})),
     secret: new Set(cfg.secrets ?? []),
   }
-  const referenced: Record<string, Set<string>> = {
-    db: new Set(),
-    sql: new Set(),
-    queue: new Set(),
-    cache: new Set(),
-    storage: new Set(),
-    secret: new Set(),
-  }
+  const referenced = Object.fromEntries(
+    Object.keys(ACCESSOR_LABEL).map((k) => [k, new Set<string>()]),
+  ) as Record<string, Set<string>>
 
   // --- Check 1: handler files + exports (mirror bundle.ts's `file.export` resolution) ---
   for (const [name, fn] of Object.entries(cfg.functions ?? {})) {
