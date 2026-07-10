@@ -26,6 +26,7 @@ export function initScaffold(
       writeFileSync(path.join(dir, "tsconfig.json"), TSCONFIG);
       writeFileSync(path.join(dir, ".env.example"), MINIMAL_ENV_EXAMPLE);
       writeFileSync(path.join(dir, "backend/api.ts"), MINIMAL_API_HANDLER);
+      writeFileSync(path.join(dir, "test/api.test.ts"), MINIMAL_API_TEST);
     }
     if (hasFrontend) {
       mkdirSync(path.join(dir, "frontend/src"), { recursive: true });
@@ -126,40 +127,63 @@ const MINIMAL_ENV_EXAMPLE = `# No secrets required for the minimal template
 # Copy to .env and run: slsv dev
 `;
 
-const MINIMAL_API_HANDLER = `import { json, router } from '@slsv/sdk'
+const MINIMAL_API_HANDLER = `import { get, json, post, router } from '@slsv/sdk'
 
 type Link = { id: string; url: string; createdAt: string }
 
 const links = new Map<string, Link>()
 
 export const handler = router([
-  {
-    method: 'GET',
-    path: '/api/health',
-    handler: () => json({ status: 'ok' }),
-  },
-  {
-    method: 'POST',
-    path: '/api/links',
-    handler: async (req) => {
-      const body = req.body as { url?: string } | undefined
-      if (!body?.url) return json({ error: 'url is required' }, 400)
+  get('/api/health', () => json({ status: 'ok' })),
+  post('/api/links', async (req) => {
+    const body = req.body as { url?: string } | undefined
+    if (!body?.url) return json({ error: 'url is required' }, 400)
 
-      const link = {
-        id: Date.now().toString(),
-        url: body.url,
-        createdAt: new Date().toISOString(),
-      }
-      links.set(link.id, link)
-      return json(link, 201)
-    },
-  },
-  {
-    method: 'GET',
-    path: '/api/links',
-    handler: async () => json([...links.values()]),
-  },
+    const link = {
+      id: Date.now().toString(),
+      url: body.url,
+      createdAt: new Date().toISOString(),
+    }
+    links.set(link.id, link)
+    return json(link, 201)
+  }),
+  get('/api/links', async () => json([...links.values()])),
 ])
+`;
+
+// Example unit test — invoke the handler with a fake API Gateway event, assert the response.
+// No AWS, no Floci. Run with \`pnpm test\`.
+const MINIMAL_API_TEST = `import { describe, it, expect } from 'vitest'
+import { handler } from '../backend/api.js'
+
+const call = (method: string, path: string, body?: unknown) =>
+  handler({
+    httpMethod: method,
+    path,
+    headers: {},
+    body: body === undefined ? undefined : JSON.stringify(body),
+  } as never) as Promise<{ statusCode: number; body: string }>
+
+describe('api', () => {
+  it('health check returns ok', async () => {
+    const res = await call('GET', '/api/health')
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).status).toBe('ok')
+  })
+
+  it('rejects a link with no url (400)', async () => {
+    const res = await call('POST', '/api/links', {})
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('creates a link, then lists it', async () => {
+    const created = await call('POST', '/api/links', { url: 'https://slsv.dev' })
+    expect(created.statusCode).toBe(201)
+    const id = JSON.parse(created.body).id
+    const list = JSON.parse((await call('GET', '/api/links')).body)
+    expect(list.some((l: { id: string }) => l.id === id)).toBe(true)
+  })
+})
 `;
 
 const PKG_JSON = (name: string, dir: string) =>

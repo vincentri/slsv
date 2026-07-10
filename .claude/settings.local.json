@@ -1,5 +1,13 @@
 {
   "permissions": {
-    "allow": ["Bash(rtk read *)", "Bash(rtk ls *)", "Bash(rtk grep *)", "Bash(awk *)"]
+    "allow": [
+      "Bash(rtk read *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk grep *)",
+      "Bash(awk *)"
+    ]
+  },
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787"
   }
 }

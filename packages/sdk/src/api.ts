@@ -54,6 +54,48 @@ export type Route<TBody = unknown> = {
   middleware?: Middleware<TBody>[];
 };
 
+/** Extra per-route options for the method helpers (currently just middleware). */
+export type RouteOptions<TBody = unknown> = Pick<Route<TBody>, "middleware">;
+
+// Method helpers: terser than a `{ method, path, handler }` literal, same Route shape so
+// router(Route[]) is unchanged. get(path, handler) or get(path, { middleware }, handler).
+function route<TBody = unknown>(
+  method: string,
+  path: string,
+  a: ApiHandler<TBody> | RouteOptions<TBody>,
+  b?: ApiHandler<TBody>,
+): Route<TBody> {
+  return b
+    ? { method, path, ...(a as RouteOptions<TBody>), handler: b }
+    : { method, path, handler: a as ApiHandler<TBody> };
+}
+
+export const get = <TBody = unknown>(
+  path: string,
+  a: ApiHandler<TBody> | RouteOptions<TBody>,
+  b?: ApiHandler<TBody>,
+) => route("GET", path, a, b);
+export const post = <TBody = unknown>(
+  path: string,
+  a: ApiHandler<TBody> | RouteOptions<TBody>,
+  b?: ApiHandler<TBody>,
+) => route("POST", path, a, b);
+export const put = <TBody = unknown>(
+  path: string,
+  a: ApiHandler<TBody> | RouteOptions<TBody>,
+  b?: ApiHandler<TBody>,
+) => route("PUT", path, a, b);
+export const patch = <TBody = unknown>(
+  path: string,
+  a: ApiHandler<TBody> | RouteOptions<TBody>,
+  b?: ApiHandler<TBody>,
+) => route("PATCH", path, a, b);
+export const del = <TBody = unknown>(
+  path: string,
+  a: ApiHandler<TBody> | RouteOptions<TBody>,
+  b?: ApiHandler<TBody>,
+) => route("DELETE", path, a, b);
+
 export function request<TBody = unknown>(
   event: LambdaEvent,
   routePath?: string,

@@ -10,12 +10,18 @@ export {
   json,
   redirect,
   router,
+  get,
+  post,
+  put,
+  patch,
+  del,
   type ApiHandler,
   type ApiRequest,
   type ApiResponse,
   type LambdaEvent,
   type Middleware,
   type Route,
+  type RouteOptions,
 } from "./api.js";
 
 export type {

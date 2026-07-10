@@ -183,12 +183,14 @@ from `slsv.yml` actually tears it down — keeps the manifest the source of trut
 split: **Lambda functions + EventBridge rules are auto-pruned** (stateless, exact-named
 `<app>-<stage>-<fn>` / `<app>-<stage>-<fn>-evt`, the common rename/remove case — a dropped
 cron/event trigger would otherwise leave its rule firing, which is wrong behavior, not
-cosmetic). **Data stores (DynamoDB / S3 buckets / RDS) auto-delete by default** (`autoRemove`,
-top-level, default **true**) — an orphan table/bucket/db dropped from the yml is DELETED on the
-next deploy (via `handleOrphan` → `DeleteTableCommand` / `emptyAndDeleteBucket` /
-`DeleteDBInstanceCommand` with `SkipFinalSnapshot`), so the manifest is the full source of
-truth. This is **destructive** — the store takes its data with it. Set **`autoRemove: false`**
-to restore the safe behavior: orphans are only reported (warned) and left until `slsv destroy`.
+cosmetic). **Data stores (DynamoDB / S3 buckets / RDS) are report-only by default** (`autoRemove`,
+top-level, default **false** — safe-for-prod: dropping a store from the yml can't silently take
+its data with it). An orphan table/bucket/db is warned and left until `slsv destroy`. Set
+**`autoRemove: true`** (opt-in, destructive) to DELETE such orphans on the next deploy (via
+`handleOrphan` → `DeleteTableCommand` / `emptyAndDeleteBucket` / `DeleteDBInstanceCommand` with
+`SkipFinalSnapshot`) so the manifest becomes the full source of truth — the store takes its data
+with it. (SQS queues, secrets, and caches are **never** pruned by reconcile at all — only
+`slsv destroy` removes them; `slsv plan` reports them as `orphan`.)
 RDS orphan delete always skips the final snapshot (the removed yml no longer carries
 `skipFinalSnapshot`). **Exception — the frontend (S3 hosting bucket `<app>-<stage>-frontend` +
 CloudFront distribution) is auto-torn-down** when `frontend:` is dropped from the yml: it's a
@@ -210,6 +212,37 @@ left before), and on `--target local` its **Floci container is swept** (`docker 
 container-lifecycle desync destroy handles — else Floci keeps running the removed fn and a
 pruned cron/queue trigger still fires). ponytail ceilings: dangling API-GW integrations / SQS
 event-source-mappings of a pruned function are still left (inert, harmless) — not yet swept.
+
+### Drift model & `slsv plan`
+
+slsv keeps **no state file**, so drift is a **two-way** diff — desired (`slsv.yml`) vs actual
+(AWS) — not Terraform's three-way (config vs recorded-state vs reality). yml is always the
+source of truth; there's no "last-applied" to go stale. The contract:
+
+- **In yml, not in AWS** → `create` on deploy (get-or-create).
+- **In AWS, not in yml (orphan)** → Lambda always pruned (stateless); data stores (Dynamo/S3/
+  RDS) `delete` only under `autoRemove: true` else reported (`orphan`); SQS/secrets/caches never
+  pruned by deploy (`orphan`, remove via `slsv destroy`).
+- **In both, config differs** → deploy **converges** *mutable* fields toward yml (already true
+  for Lambda config via `UpdateFunctionConfiguration` and API CORS via `UpdateApiCommand`;
+  SQS/S3/RDS/cache converge is a follow-up). *Immutable* fields (Lambda `architecture`, Dynamo
+  partition/sort key, RDS engine, SQS `fifo`) can't update in place → reported as `replace`;
+  deploy **never** silently destroys a stateful resource to change one (SQS `fifo` flips the
+  queue name, so it surfaces as delete+create naturally).
+
+`slsv plan` (`providers/aws/plan.ts`) is the **read-only** preview of all of the above — it
+enumerates live AWS with the same `paginate()` + `List*`/`Describe*` calls reconcile uses, then
+`classify()` (pure, unit-tested in `plan.test.ts`) buckets each resource into
+`create`/`update`/`replace`/`delete`/`orphan`. `slsv deploy` runs it first and prints the diff;
+on `--target aws` a **destructive** delete (data store under `autoRemove: true`) prompts a
+confirm unless `--yes`. v1 field-diffs only what's cheap to read (Lambda memory/timeout/arch,
+Dynamo keys, RDS class/storage/multiAz/engine); S3/SQS/cache are presence-only. **ponytail
+follow-ups:** (1) widen deploy-side `Update*` coverage to SQS (`SetQueueAttributes`), S3
+(`PutBucketPolicy`/`PutBucketCors`), RDS (`ModifyDBInstance`), cache
+(`ModifyReplicationGroup`) — plan already *reports* this drift, auto-fix is the increment;
+(2) switch destroy/prune from prefix-match to tag-match (`slsv:app`+`slsv:stage`, already
+tagged) to close the `myapp-dev-` vs `myapp-dev-2-*` wrong-stack sweep; (3) a stage lock
+(DynamoDB conditional-put) for concurrent-deploy races.
 
 ### IAM exec role
 
@@ -370,7 +403,7 @@ caches: { name: { type: redis|valkey, nodeType?, nodes?, serverless? } } # both 
 secrets: [ENV_VAR_NAME]
 tags: { KEY: value } # optional; custom tags added to every resource (on top of slsv:* tags)
 logRetentionDays: 14 # optional; CloudWatch log retention (default 14, 0 = never). Must be a CloudWatch-allowed value; applied every deploy
-autoRemove: true # optional (default true); on deploy, delete data stores (DynamoDB/S3/RDS) dropped from the yml — destructive. false = report-only, remove via `slsv destroy`
+autoRemove: false # optional (default false, safe); true = on deploy DELETE data stores (DynamoDB/S3/RDS) dropped from the yml — destructive. false = report-only, remove via `slsv destroy`
 stages: { <name>: { <partial-config> } } # optional; deep-merged over base for --stage <name> (null removes a key)
 ```
 
@@ -402,6 +435,7 @@ into the Lambda, but the app's `npm install`/typecheck needs the dep resolvable.
 | `packages/cli/src/providers/aws/index.ts`     | Floci endpoint health check                                                                                                                                                                   |
 | `packages/cli/src/providers/aws/functions.ts` | esbuild bundle → zip → Lambda deploy (bounded-parallel, `mapLimit` concurrency 8 — each fn blocks on `waitUntilFunctionUpdatedV2` up to 120s, so serial deploy scaled linearly with fn count) |
 | `packages/cli/src/deploy.ts`                  | orchestration order                                                                                                                                                                           |
+| `packages/cli/src/providers/aws/plan.ts`      | `slsv plan` — read-only two-way diff (yml vs AWS); `classify()` pure, `computePlan()` enumerates                                                                                              |
 | `packages/cli/src/lint.ts`                    | `lintApp` — preflight: slsv.yml ↔ code (handler/export exists, SDK names declared, triggers resolve)                                                                                          |
 | `packages/cli/src/init.ts`                    | scaffold templates (minimal + demo)                                                                                                                                                           |
 | `packages/cli/src/env-key.ts`                 | shared env var name util (`DATABASE_FOO`, `QUEUE_BAR`, etc.)                                                                                                                                  |

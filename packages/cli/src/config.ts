@@ -110,10 +110,10 @@ const AppConfig = z.object({
   secrets: z.array(z.string()).optional(),
   frontend: FrontendConfig.optional(),
   tags: z.record(z.string()).optional(), // custom tags merged onto every resource
-  // On deploy, reconcile prunes resources dropped from the yml. Default true: data stores
-  // (DynamoDB/S3/RDS) orphaned by a yml edit are DELETED (with their data). Set false to keep
-  // them — orphans are reported and left until `slsv destroy`. (Lambda/EventBridge/frontend are
-  // always pruned regardless; they're stateless.)
+  // On deploy, reconcile prunes resources dropped from the yml. Default FALSE (safe): data
+  // stores (DynamoDB/S3/RDS) orphaned by a yml edit are REPORTED and left until `slsv destroy`.
+  // Set true to DELETE them (with their data) on deploy — destructive, opt-in. (Lambda/
+  // EventBridge/frontend are always pruned regardless; they're stateless.)
   autoRemove: z.boolean().optional(),
   // CloudWatch log retention in days (default 14). 0 = never expire. Must be a value
   // CloudWatch accepts, else the log group would reject the retention policy.

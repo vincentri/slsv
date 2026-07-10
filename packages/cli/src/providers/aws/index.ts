@@ -18,6 +18,7 @@ import { tailLogs } from "./logs-tail.js";
 import { ensureCacheClusters } from "./redis.js";
 import { ensureDbInstances } from "./databases.js";
 import { deployFrontendLocal, deployFrontendAws, destroyDistribution } from "./frontend.js";
+import { computePlan, type PlanResult } from "./plan.js";
 import {
   UpdateFunctionCodeCommand,
   DeleteFunctionCommand,
@@ -351,6 +352,12 @@ export class AwsProvider {
    * reported, so a table/bucket/db dropped from the yml can't silently take its data with
    * it. Use `slsv destroy` (or delete manually) to remove those on purpose.
    */
+  // Read-only two-way diff of live AWS vs slsv.yml. No mutation. Backs `slsv plan` and the
+  // deploy preview.
+  async plan(cfg: AppConfig, stage: string): Promise<PlanResult> {
+    return computePlan(this.clients, cfg, stage);
+  }
+
   async reconcile(cfg: AppConfig, stage: string) {
     const prefix = `${cfg.app}-${stage}-`;
     const owned = (n?: string): n is string => !!n && n.startsWith(prefix);
@@ -437,11 +444,11 @@ export class AwsProvider {
     }
 
     // --- Data stores (DynamoDB / S3 buckets / RDS) ---
-    // Default `autoRemove: true` — an orphan (dropped from the yml) is DELETED here so the
-    // manifest is the full source of truth. Set `autoRemove: false` to keep the old safe
-    // behavior: orphans are reported and left until `slsv destroy`. This is destructive by
-    // design — a store removed from slsv.yml takes its data with it on the next deploy.
-    const autoRemove = cfg.autoRemove ?? true;
+    // Default `autoRemove: false` (safe) — an orphan (a data store dropped from the yml) is
+    // REPORTED and left until `slsv destroy`, so it can't silently take its data with it. Set
+    // `autoRemove: true` to DELETE orphans here on deploy (destructive, opt-in) and make the
+    // manifest the full source of truth.
+    const autoRemove = cfg.autoRemove ?? false;
     const dbEntries = Object.entries(cfg.databases ?? {});
     const wantTables = new Set(dbEntries.filter(([, d]) => d.type === "dynamodb").map(([k]) => k));
     const wantDbs = new Set(
@@ -531,7 +538,7 @@ export class AwsProvider {
       );
       for (const o of orphans) console.warn(`    ${o}`);
       console.warn(
-        `  Kept (autoRemove: false). Remove with \`slsv destroy\`, or set autoRemove: true (default) to prune on deploy.\n`,
+        `  Kept (autoRemove: false, the default). Remove with \`slsv destroy\`, or set autoRemove: true to prune on deploy.\n`,
       );
     }
   }

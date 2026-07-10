@@ -3,6 +3,7 @@ import path from "path";
 import { existsSync } from "fs";
 import { loadConfig, ConfigError } from "./config.js";
 import { AwsProvider } from "./providers/aws/index.js";
+import { renderPlan } from "./providers/aws/plan.js";
 import { deploy } from "./deploy.js";
 import { startDev } from "./dev.js";
 import { initScaffold, initOutroMessage, type Template, type Stack } from "./init.js";
@@ -111,6 +112,23 @@ program
   });
 
 program
+  .command("plan")
+  .description("Preview what a deploy would change (read-only diff of AWS vs slsv.yml)")
+  .allowExcessArguments(false)
+  .addOption(
+    new Option("--target <target>", "local or aws").choices(["local", "aws"]).default("local"),
+  )
+  .option("--stage <name>", "deployment stage", "dev")
+  .action(async (opts: { target: "local" | "aws"; stage: string }) => {
+    const cwd = process.cwd();
+    const stage = validStage(opts.stage);
+    const cfg = loadConfig(cwd, stage);
+    const provider = new AwsProvider(opts.target);
+    if (opts.target === "local") await provider.startLocalEmulator(cwd, cfg);
+    console.log(renderPlan(await provider.plan(cfg, stage)));
+  });
+
+program
   .command("deploy")
   .description("Deploy (default: local, --target aws for real AWS)")
   .allowExcessArguments(false) // reject stray operands (e.g. `deploy -- target aws`) — see destroy
@@ -118,13 +136,33 @@ program
     new Option("--target <target>", "local or aws").choices(["local", "aws"]).default("local"),
   )
   .option("--stage <name>", "deployment stage (namespaces resources)", "dev")
-  .action(async (opts: { target: "local" | "aws"; stage: string }) => {
+  .option("-y, --yes", "Skip the destructive-change confirmation prompt", false)
+  .action(async (opts: { target: "local" | "aws"; stage: string; yes: boolean }) => {
     const cwd = process.cwd();
     const stage = validStage(opts.stage);
     const cfg = loadConfig(cwd, stage);
     const provider = new AwsProvider(opts.target);
 
     if (opts.target === "local") await provider.startLocalEmulator(cwd, cfg);
+
+    // Preview first — a deploy converges live resources toward the yml and (with autoRemove)
+    // can DELETE data stores. Show the diff, and on real AWS gate destructive deletes behind a
+    // confirm so an accidental yml edit can't silently drop a prod table.
+    const result = await provider.plan(cfg, stage);
+    console.log(renderPlan(result));
+    const willDestroy = result.changes.some((c) => c.action === "delete" && c.destructive);
+    if (opts.target === "aws" && willDestroy && !opts.yes) {
+      if (!process.stdout.isTTY) {
+        console.error("\nNon-interactive: pass --yes to confirm the destructive deploy.");
+        process.exit(1);
+      }
+      const { confirm, isCancel } = await import("@clack/prompts");
+      const ok = await confirm({ message: "Apply — including the destructive deletes above?" });
+      if (isCancel(ok) || !ok) {
+        console.log("Cancelled.");
+        return;
+      }
+    }
 
     const outputs = await deploy(cfg, provider, cwd, "deploy", stage);
 

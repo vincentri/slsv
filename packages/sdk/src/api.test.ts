@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { json, redirect, request, router, type Middleware } from "./api.js";
+import { get, json, post, redirect, request, router, type Middleware } from "./api.js";
 
 describe("api helpers", () => {
   it("normalizes HTTP API v2 events", () => {
@@ -118,5 +118,32 @@ describe("api helpers", () => {
     });
     expect(res.statusCode).toBe(401);
     expect(handlerRan).toBe(false);
+  });
+
+  it("method helpers build routes and carry middleware", async () => {
+    const requireAuth: Middleware = (req, next) =>
+      req.headers.authorization ? next() : json({ error: "unauthorized" }, 401);
+    const handle = router([
+      get("/api/thing", () => json({ read: true })),
+      post("/api/thing", { middleware: [requireAuth] }, () => json({ wrote: true }, 201)),
+    ]);
+
+    const read = await handle({ rawPath: "/api/thing", requestContext: { http: { method: "GET" } } });
+    expect(read.statusCode).toBe(200);
+    expect(JSON.parse(read.body)).toEqual({ read: true });
+
+    const blocked = await handle({
+      rawPath: "/api/thing",
+      requestContext: { http: { method: "POST" } },
+    });
+    expect(blocked.statusCode).toBe(401);
+
+    const wrote = await handle({
+      rawPath: "/api/thing",
+      headers: { authorization: "token" },
+      requestContext: { http: { method: "POST" } },
+    });
+    expect(wrote.statusCode).toBe(201);
+    expect(JSON.parse(wrote.body)).toEqual({ wrote: true });
   });
 });

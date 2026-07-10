@@ -100,6 +100,14 @@ export async function deployFrontendLocal(
       .on("error", () => send(res, 404, "Not found"))
       .pipe(res);
   });
+  // Best-effort preview server: a prior `slsv deploy` (local) leaves its server on :3000, so a
+  // second deploy would hit EADDRINUSE. The backend is already provisioned by this point — don't
+  // let a busy port crash the whole deploy. Warn and carry on (something's already serving it).
+  server.on("error", (e: NodeJS.ErrnoException) => {
+    if (e.code === "EADDRINUSE")
+      console.warn("  ⚠ port 3000 in use — frontend preview not started (another slsv deploy?).");
+    else console.warn(`  ⚠ frontend preview server error: ${e.message}`);
+  });
   server.listen(3000);
   process.on("exit", () => server.close());
   return "http://localhost:3000";

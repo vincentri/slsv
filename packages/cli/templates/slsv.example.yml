@@ -140,6 +140,11 @@ tags:
 # logRetentionDays: 14   # CloudWatch log retention for all functions (default 14; 0 = never
 # expire). Must be a CloudWatch value: 1,3,5,7,14,30,60,90,...,3653.
 
+# autoRemove: false   # default false (safe): a data store (DynamoDB/S3/RDS) dropped from this
+# yml is REPORTED on the next deploy and left until `slsv destroy`. Set true to DELETE such
+# orphans on deploy (with their data — destructive). Lambda/EventBridge/frontend always prune.
+# Run `slsv plan` to preview exactly what a deploy would create/update/delete first.
+
 frontend:
   src: ./frontend/dist # build output to serve
   build: npm --prefix frontend install && npm --prefix frontend run build # build cmd
