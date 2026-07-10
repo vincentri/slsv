@@ -1,28 +1,28 @@
-import { readFileSync } from 'fs'
-import path from 'path'
+import { readFileSync } from "fs";
+import path from "path";
 import {
   CreateDBInstanceCommand,
   DeleteDBInstanceCommand,
   DescribeDBInstancesCommand,
   type CreateDBInstanceCommandInput,
   type RDSClient,
-} from '@aws-sdk/client-rds'
-import pg from 'pg'
-import mysql from 'mysql2/promise'
-import { envKey } from '../../env-key.js'
-import { asTagArray } from './tags.js'
-import type { AppConfig } from '../../config.js'
+} from "@aws-sdk/client-rds";
+import pg from "pg";
+import mysql from "mysql2/promise";
+import { envKey } from "../../env-key.js";
+import { asTagArray } from "./tags.js";
+import type { AppConfig } from "../../config.js";
 
 // Per-engine provisioning constants. floci spins up a real DB process per instance.
 // postgres: master user 'postgres'/'postgres' (matches the old container defaults).
 // mysql: master user 'admin'/'adminadmin' — NOT 'root', which conflicts with mysql's
 // built-in root@localhost and crashes the container on first boot.
 const ENGINE_CFG = {
-  postgres: { masterUser: 'postgres', masterPass: 'postgres', port: 5432, scheme: 'postgres' },
-  mysql: { masterUser: 'admin', masterPass: 'adminadmin', port: 3306, scheme: 'mysql' },
-} as const
+  postgres: { masterUser: "postgres", masterPass: "postgres", port: 5432, scheme: "postgres" },
+  mysql: { masterUser: "admin", masterPass: "adminadmin", port: 3306, scheme: "mysql" },
+} as const;
 
-type SqlEngine = keyof typeof ENGINE_CFG
+type SqlEngine = keyof typeof ENGINE_CFG;
 
 // Each databases.<name> of type postgres|mysql → its own RDS DB instance (one per name).
 // floci emulates RDS: CreateDBInstance spins up a real DB process and returns its
@@ -33,20 +33,20 @@ type SqlEngine = keyof typeof ENGINE_CFG
 // mirroring docker-entrypoint-initdb.d "runs once on fresh" semantics.
 export async function ensureDbInstances(
   client: RDSClient,
-  databases: AppConfig['databases'],
+  databases: AppConfig["databases"],
   appName: string,
   cwd: string,
   tags: Record<string, string>,
   local: boolean,
 ): Promise<Record<string, string>> {
-  const envVars: Record<string, string> = {}
-  if (!databases) return envVars
+  const envVars: Record<string, string> = {};
+  if (!databases) return envVars;
   for (const [name, cfg] of Object.entries(databases)) {
-    if (cfg.type !== 'postgres' && cfg.type !== 'mysql') continue
-    const engine = cfg.type as SqlEngine
-    const ec = ENGINE_CFG[engine]
-    const instanceId = `${appName}-${name}`
-    const dbName = cfg.name ?? name
+    if (cfg.type !== "postgres" && cfg.type !== "mysql") continue;
+    const engine = cfg.type as SqlEngine;
+    const ec = ENGINE_CFG[engine];
+    const instanceId = `${appName}-${name}`;
+    const dbName = cfg.name ?? name;
 
     const createInput: CreateDBInstanceCommandInput = {
       DBInstanceIdentifier: instanceId,
@@ -55,28 +55,28 @@ export async function ensureDbInstances(
       MasterUsername: ec.masterUser,
       MasterUserPassword: ec.masterPass,
       // ponytail: knobs apply on --target aws; floci runs single-instance regardless.
-      DBInstanceClass: cfg.instanceClass ?? 'db.t3.micro',
+      DBInstanceClass: cfg.instanceClass ?? "db.t3.micro",
       AllocatedStorage: cfg.storage ?? 20,
       MultiAZ: cfg.multiAz ?? false,
       Tags: asTagArray(tags),
-    }
+    };
 
-    const existing = await describeInstance(client, instanceId)
-    let created = !existing
+    const existing = await describeInstance(client, instanceId);
+    let created = !existing;
     if (!existing) {
       try {
-        await client.send(new CreateDBInstanceCommand(createInput))
+        await client.send(new CreateDBInstanceCommand(createInput));
       } catch (e: any) {
         // Race: created between our describe + create — not fatal, proceed to describe.
-        if (e.name !== 'DBInstanceAlreadyExists') throw e
+        if (e.name !== "DBInstanceAlreadyExists") throw e;
       }
     }
 
-    let inst = await waitForAvailable(client, instanceId)
-    let addr = inst?.Endpoint?.Address
-    let port = inst?.Endpoint?.Port ?? ec.port
+    let inst = await waitForAvailable(client, instanceId);
+    let addr = inst?.Endpoint?.Address;
+    let port = inst?.Endpoint?.Port ?? ec.port;
     if (!addr)
-      throw new Error(`databases.${name}: could not resolve RDS endpoint for ${instanceId}`)
+      throw new Error(`databases.${name}: could not resolve RDS endpoint for ${instanceId}`);
 
     // ponytail: --target local only. Floci's RDS registry can desync from container lifecycle
     // (an instance reads `available` after a Floci restart that killed its container) — the
@@ -87,30 +87,35 @@ export async function ensureDbInstances(
     // redis.ts. Remove once Floci keeps its RDS registry in sync with container lifecycle.
     if (local && !(await isDbAlive(engine, ec, addr, port, dbName))) {
       await client
-        .send(new DeleteDBInstanceCommand({ DBInstanceIdentifier: instanceId, SkipFinalSnapshot: true }))
-        .catch(() => {})
-      await waitForGone(client, instanceId)
+        .send(
+          new DeleteDBInstanceCommand({
+            DBInstanceIdentifier: instanceId,
+            SkipFinalSnapshot: true,
+          }),
+        )
+        .catch(() => {});
+      await waitForGone(client, instanceId);
       await client.send(new CreateDBInstanceCommand(createInput)).catch((e: any) => {
-        if (e.name !== 'DBInstanceAlreadyExists') throw e
-      })
-      inst = await waitForAvailable(client, instanceId)
-      addr = inst?.Endpoint?.Address
-      port = inst?.Endpoint?.Port ?? ec.port
+        if (e.name !== "DBInstanceAlreadyExists") throw e;
+      });
+      inst = await waitForAvailable(client, instanceId);
+      addr = inst?.Endpoint?.Address;
+      port = inst?.Endpoint?.Port ?? ec.port;
       if (!addr)
-        throw new Error(`databases.${name}: could not resolve RDS endpoint for ${instanceId}`)
-      created = true // fresh DB → init_sql must re-run
+        throw new Error(`databases.${name}: could not resolve RDS endpoint for ${instanceId}`);
+      created = true; // fresh DB → init_sql must re-run
     }
 
-    const url = `${ec.scheme}://${ec.masterUser}:${ec.masterPass}@${addr}:${port}/${dbName}`
-    envVars[envKey('DATABASE', name)] = url
+    const url = `${ec.scheme}://${ec.masterUser}:${ec.masterPass}@${addr}:${port}/${dbName}`;
+    envVars[envKey("DATABASE", name)] = url;
 
     // init_sql: only on first creation, after the instance accepts connections.
     if (created && cfg.init_sql) {
-      const sql = readFileSync(path.join(cwd, cfg.init_sql), 'utf8')
-      await runInitSql(engine, url, sql)
+      const sql = readFileSync(path.join(cwd, cfg.init_sql), "utf8");
+      await runInitSql(engine, url, sql);
     }
   }
-  return envVars
+  return envVars;
 }
 
 // Liveness check: a *real* DB handshake (SELECT 1), NOT a TCP connect — Floci fronts the RDS
@@ -128,73 +133,89 @@ async function isDbAlive(
 ): Promise<boolean> {
   for (let i = 0; i < attempts; i++) {
     try {
-      if (engine === 'postgres') {
+      if (engine === "postgres") {
         const c = new pg.Client({
-          host, port, user: ec.masterUser, password: ec.masterPass,
-          database: dbName, connectionTimeoutMillis: 3000,
-        })
-        await c.connect()
-        try { await c.query('select 1') } finally { await c.end() }
+          host,
+          port,
+          user: ec.masterUser,
+          password: ec.masterPass,
+          database: dbName,
+          connectionTimeoutMillis: 3000,
+        });
+        await c.connect();
+        try {
+          await c.query("select 1");
+        } finally {
+          await c.end();
+        }
       } else {
         const c = await mysql.createConnection({
-          host, port, user: ec.masterUser, password: ec.masterPass,
-          database: dbName, connectTimeout: 3000,
-        })
-        try { await c.query('select 1') } finally { await c.end() }
+          host,
+          port,
+          user: ec.masterUser,
+          password: ec.masterPass,
+          database: dbName,
+          connectTimeout: 3000,
+        });
+        try {
+          await c.query("select 1");
+        } finally {
+          await c.end();
+        }
       }
-      return true
+      return true;
     } catch {
-      if (i < attempts - 1) await sleep(1000)
+      if (i < attempts - 1) await sleep(1000);
     }
   }
-  return false
+  return false;
 }
 
 // Poll DescribeDBInstances until the instance is gone after a delete, so the recreate doesn't
 // race an in-flight teardown. ponytail: proceed on timeout — recreate swallows AlreadyExists.
 async function waitForGone(client: RDSClient, instanceId: string, maxMs = 30_000) {
-  const start = Date.now()
+  const start = Date.now();
   while (Date.now() - start < maxMs) {
-    if (!(await describeInstance(client, instanceId))) return
-    await sleep(1000)
+    if (!(await describeInstance(client, instanceId))) return;
+    await sleep(1000);
   }
 }
 
 async function describeInstance(client: RDSClient, instanceId: string) {
   const r = await client
     .send(new DescribeDBInstancesCommand({ DBInstanceIdentifier: instanceId }))
-    .catch(() => null)
-  return r?.DBInstances?.[0] ?? undefined
+    .catch(() => null);
+  return r?.DBInstances?.[0] ?? undefined;
 }
 
 // ponytail: polls DescribeDBInstances up to 120s. floci is ~2-5s; real AWS is minutes.
 async function waitForAvailable(client: RDSClient, instanceId: string, maxMs = 120_000) {
-  const start = Date.now()
+  const start = Date.now();
   while (Date.now() - start < maxMs) {
-    const inst = await describeInstance(client, instanceId)
-    const status = inst?.DBInstanceStatus
-    if (status === 'available') return inst
-    if (status === 'failed') throw new Error(`RDS instance ${instanceId} failed to provision`)
-    await sleep(2000)
+    const inst = await describeInstance(client, instanceId);
+    const status = inst?.DBInstanceStatus;
+    if (status === "available") return inst;
+    if (status === "failed") throw new Error(`RDS instance ${instanceId} failed to provision`);
+    await sleep(2000);
   }
-  throw new Error(`RDS instance ${instanceId} did not become available within ${maxMs / 1000}s`)
+  throw new Error(`RDS instance ${instanceId} did not become available within ${maxMs / 1000}s`);
 }
 
 async function runInitSql(engine: SqlEngine, url: string, sql: string) {
-  if (engine === 'postgres') {
-    const c = new pg.Client({ connectionString: url })
-    await c.connect()
+  if (engine === "postgres") {
+    const c = new pg.Client({ connectionString: url });
+    await c.connect();
     try {
-      await c.query(sql)
+      await c.query(sql);
     } finally {
-      await c.end()
+      await c.end();
     }
   } else {
-    const c = await mysql.createConnection(url)
+    const c = await mysql.createConnection(url);
     try {
-      await c.query(sql)
+      await c.query(sql);
     } finally {
-      await c.end()
+      await c.end();
     }
   }
 }
@@ -202,5 +223,5 @@ async function runInitSql(engine: SqlEngine, url: string, sql: string) {
 // External databases: BYO connection string from process.env (DATABASE_<NAME>). Not provisioned.
 
 function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
+  return new Promise((r) => setTimeout(r, ms));
 }

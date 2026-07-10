@@ -8,14 +8,14 @@
     "url": "git+https://github.com/vincentri/slsv.git",
     "directory": "packages/cli"
   },
-  "type": "module",
+  "bin": {
+    "slsv": "dist/cli.js"
+  },
   "files": [
     "dist",
     "templates"
   ],
-  "bin": {
-    "slsv": "dist/cli.js"
-  },
+  "type": "module",
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsup",
@@ -55,7 +55,7 @@
     "@types/pg": "^8.11.0",
     "tsup": "^8.0.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.4.0",
+    "typescript": "^7.0.0",
     "vitest": "^1.6.1"
   }
 }

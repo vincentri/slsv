@@ -113,7 +113,7 @@ One ElastiCache Redis/Valkey **replication group** per `caches.<name>`, provisio
 **Serverless mode (`caches.<name>.serverless: true`, aws-only):** opts into ElastiCache
 Serverless (`CreateServerlessCache` / `DescribeServerlessCaches` / teardown
 `DeleteServerlessCache`) instead of a node group — auto-scales, pay-per-use, no `nodeType`/
-`nodes`. **`--target local` ignores it**: the local branch (`ensureLocalCache`) runs *before*
+`nodes`. **`--target local` ignores it**: the local branch (`ensureLocalCache`) runs _before_
 the serverless check and `continue`s, so a serverless-flagged cache runs as a node group on
 Floci — because Floci doesn't implement `CreateServerlessCache` (verified: returns
 `UnsupportedOperation`). Same skip-on-local stance as `provisionedConcurrency`/`nodeType`.
@@ -128,6 +128,7 @@ TLS from the `rediss://` scheme with no change. Provisions asynchronously (~minu
 fallback for serverless caches once Floci implements the serverless API.
 
 Endpoint resolution splits by target (`ensureCacheClusters(..., local)`):
+
 - **`--target aws`** — read from `DescribeReplicationGroups` → `ConfigurationEndpoint`, fallback `NodeGroups[0].PrimaryEndpoint` (`extractEndpoint`). Provisions **asynchronously (~5-10 min)** — endpoint isn't populated until `available`, so `redis.ts` polls (`waitForCacheEndpoint`) before reading it.
 - **`--target local`** — ponytail bridge for two Floci ElastiCache-emulation defects: (1) its API returns an **unreachable `localhost:6379`** for every group and doesn't publish the valkey port to the host, so `ensureLocalCache` reads the valkey container's floci-network IP (`192.168.107.x`) via `docker inspect floci-valkey-<app>-<stage>-<name>` and injects `redis://<ip>:6379` — same reachability model RDS gets for free; (2) its group **registry desyncs from container lifecycle** (a group reads `available` with no container behind it, e.g. after a Floci restart → recreate-every-run + orphans). The `docker inspect` doubles as the liveness check: no container IP ⇒ stale group ⇒ `DeleteReplicationGroup` + recreate so Floci respawns it. Ceiling: assumes Docker CLI + `floci-valkey-<id>` naming; remove the whole local branch once Floci returns the container IP in `ConfigurationEndpoint` like RDS does. (Filed against Floci: endpoint should be the container IP; registry should track container lifecycle.)
 
@@ -171,8 +172,9 @@ since dotenv never overwrites).
 validates the merged result — the `stages` key is stripped before validation, so no schema
 entry is needed. Merge rules (`deepMerge`): objects merge recursively, scalars/arrays
 replace, and `key: null` **removes** a base key (enables trigger swaps, e.g. `queue: null`
-+ `event: {...}` so dev uses EventBridge while prod keeps SQS). Base config is the `dev`
-default; override only what differs. Covered by `config.test.ts`.
+
+- `event: {...}` so dev uses EventBridge while prod keeps SQS). Base config is the `dev`
+  default; override only what differs. Covered by `config.test.ts`.
 
 ### Reconcile / orphan prune
 
@@ -358,11 +360,11 @@ functions:
 api: { cors?: [origin, ...] } # optional; HTTP API CORS AllowOrigins (omit → '*'). Methods/headers always '*'. Custom domain NOT yet supported (manual: ACM + API GW custom domain + DNS)
 queues: { name: { type: sqs, fifo?: bool, visibilityTimeout?: secs, dlq?: name } }
 buckets: {
-  name: {}
-  # or:
-  #   publicRead: true    # browser reads objects via bucket URL (s3:GetObject policy + blocks disabled)
-  #   cors: [origin, ...] # browser PUT/GET cross-origin (presigned URLs); pair with publicRead when allowing GET
-}
+    name: {},
+    # or:
+    #   publicRead: true    # browser reads objects via bucket URL (s3:GetObject policy + blocks disabled)
+    #   cors: [origin, ...] # browser PUT/GET cross-origin (presigned URLs); pair with publicRead when allowing GET
+  }
 databases: { name: { type: dynamodb|postgres|mysql, ... } } # dynamodb: partitionKey, sortKey?, gsi? — postgres/mysql: instanceClass?, storage?, multiAz?, name?, init_sql?, skipFinalSnapshot? (default true — destroy takes no snapshot). All provisioned via their APIs. Hosted/BYO DB → put its URL in secrets:, not here
 caches: { name: { type: redis|valkey, nodeType?, nodes?, serverless? } } # both types provision valkey under the hood; knobs apply on --target aws. serverless: true → ElastiCache Serverless on aws (rediss://, auto-scale); ignored locally (node group — Floci lacks the serverless API)
 secrets: [ENV_VAR_NAME]
@@ -379,42 +381,42 @@ stages: { <name>: { <partial-config> } } # optional; deep-merged over base for -
 - `slsv init --demo` → full demo (HTTP + webhook + SQS job + cron)
 - Demo template uses `paymentWebhook` (x-webhook-secret header, no Stripe). `.env.example` works as-is.
 - **pnpm-only.** slsv apps use **pnpm** exclusively — the hint, scaffolds, `slsv dev`, and the frontend `build:` command all assume pnpm. Mixing npm/yarn breaks: running `npm install` over a pnpm `node_modules` throws `ERESOLVE`.
-- **pnpm build-script gate.** pnpm 10+ blocks native build scripts by default and **exits non-zero** on any ignored build → `ERR_PNPM_IGNORED_BUILDS`, breaking `&&` chains. esbuild is a build-script dep at BOTH the app root (via the `@slsv/sdk` file:-link toolchain) and the frontend (via vite). **pnpm 11 silently ignores the `onlyBuiltDependencies` allowlist from a config file** (also ignores `.npmrc`/env/CLI-flag variants) — the *only* setting it honors from a file is `dangerouslyAllowAllBuilds: true` (camelCase) in `pnpm-workspace.yaml`. So scaffolds ship that file at **app root + `frontend/`** (static in demo; `PNPM_WORKSPACE` const written at both in `init.ts` minimal). Trade-off: allows all deps' postinstalls (fine for a trusted dev scaffold). Verified end-to-end on pnpm 11.5.2.
+- **pnpm build-script gate.** pnpm 10+ blocks native build scripts by default and **exits non-zero** on any ignored build → `ERR_PNPM_IGNORED_BUILDS`, breaking `&&` chains. esbuild is a build-script dep at BOTH the app root (via the `@slsv/sdk` file:-link toolchain) and the frontend (via vite). **pnpm 11 silently ignores the `onlyBuiltDependencies` allowlist from a config file** (also ignores `.npmrc`/env/CLI-flag variants) — the _only_ setting it honors from a file is `dangerouslyAllowAllBuilds: true` (camelCase) in `pnpm-workspace.yaml`. So scaffolds ship that file at **app root + `frontend/`** (static in demo; `PNPM_WORKSPACE` const written at both in `init.ts` minimal). Trade-off: allows all deps' postinstalls (fine for a trusted dev scaffold). Verified end-to-end on pnpm 11.5.2.
 - The `Next:` hint is hardcoded pnpm: `pnpm install` at root **and** `frontend/`, then `slsv dev`.
-- **Frontend `build:`** (both templates) is `cd frontend && pnpm install && pnpm run build` — pnpm install is exit-0 via the shipped `dangerouslyAllowAllBuilds` file, and it builds to `frontend/dist` (which `frontend.src` points at — deploying the *build output*, not raw source, or the browser gets raw TS → blank page).
+- **Frontend `build:`** (both templates) is `cd frontend && pnpm install && pnpm run build` — pnpm install is exit-0 via the shipped `dangerouslyAllowAllBuilds` file, and it builds to `frontend/dist` (which `frontend.src` points at — deploying the _build output_, not raw source, or the browser gets raw TS → blank page).
 - **`slsv dev` frontend runner (`dev.ts`)**: `ensureFrontendDeps()` writes the `dangerouslyAllowAllBuilds` `pnpm-workspace.yaml` if missing (fixes apps scaffolded before it shipped) + `pnpm install`s if `node_modules` is absent, then spawns `pnpm run dev`.
 - `slsv init --yes` → headless/CI (name = folder name)
 
 **SDK dependency in scaffolds:** both templates set `@slsv/sdk` via `sdkDependency(dir)` in
 `init.ts` — a `file:` link to the local `packages/sdk` when scaffolding from a source
 checkout (dev), else `^0.1.0`. ⚠️ **`@slsv/sdk` is NOT published to npm yet** — so a
-scaffold made by a *published* CLI (falling back to `^0.1.0`) will fail `npm install` with a
-404. Publishing `@slsv/sdk` is a hard release prerequisite. (Bundling still inlines the SDK
+scaffold made by a _published_ CLI (falling back to `^0.1.0`) will fail `npm install` with a 404. Publishing `@slsv/sdk` is a hard release prerequisite. (Bundling still inlines the SDK
 into the Lambda, but the app's `npm install`/typecheck needs the dep resolvable.)
 
 ## Critical files
 
-| File                                          | Purpose                                                                                                                                                                                          |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `packages/cli/src/config.ts`                  | zod schema for slsv.yml                                                                                                                                                                          |
-| `packages/cli/src/providers/aws/index.ts`     | AwsProvider — deploy + destroy + reconcile                                                                                                                                                      |
-| `packages/cli/src/providers/aws/index.ts` | Floci endpoint health check                                                                                                                                                                 |
+| File                                          | Purpose                                                                                                                                                                                       |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/cli/src/config.ts`                  | zod schema for slsv.yml                                                                                                                                                                       |
+| `packages/cli/src/providers/aws/index.ts`     | AwsProvider — deploy + destroy + reconcile                                                                                                                                                    |
+| `packages/cli/src/providers/aws/index.ts`     | Floci endpoint health check                                                                                                                                                                   |
 | `packages/cli/src/providers/aws/functions.ts` | esbuild bundle → zip → Lambda deploy (bounded-parallel, `mapLimit` concurrency 8 — each fn blocks on `waitUntilFunctionUpdatedV2` up to 120s, so serial deploy scaled linearly with fn count) |
-| `packages/cli/src/deploy.ts`                  | orchestration order                                                                                                                                                                              |
-| `packages/cli/src/lint.ts`                    | `lintApp` — preflight: slsv.yml ↔ code (handler/export exists, SDK names declared, triggers resolve)                                                                                             |
-| `packages/cli/src/init.ts`                    | scaffold templates (minimal + demo)                                                                                                                                                              |
-| `packages/cli/src/env-key.ts`                 | shared env var name util (`DATABASE_FOO`, `QUEUE_BAR`, etc.)                                                                                                                                        |
-| `packages/cli/src/providers/aws/iam.ts`       | `ensureExecRole`/`deleteExecRole` — per-app+stage role + scoped inline `slsv-data` policy                                                                                                        |
-| `packages/cli/src/providers/aws/secrets.ts`   | `ensureSecrets` — upsert to Secrets Manager, inject `SECRET_<NAME>=<id>` (never the value)                                                                                                       |
-| `packages/sdk/src/index.ts`                   | db/queue/storage/cache/secret/sql exports                                                                                                                                                               |
-| `packages/sdk/src/providers/aws/sql.ts`       | `makeSql` — postgres/mysql conn string → Drizzle client (dialect sniff, per-container cache)                                                                                                     |
-| `packages/sdk/src/resolve.ts`                 | logical name → env var                                                                                                                                                                           |
+| `packages/cli/src/deploy.ts`                  | orchestration order                                                                                                                                                                           |
+| `packages/cli/src/lint.ts`                    | `lintApp` — preflight: slsv.yml ↔ code (handler/export exists, SDK names declared, triggers resolve)                                                                                          |
+| `packages/cli/src/init.ts`                    | scaffold templates (minimal + demo)                                                                                                                                                           |
+| `packages/cli/src/env-key.ts`                 | shared env var name util (`DATABASE_FOO`, `QUEUE_BAR`, etc.)                                                                                                                                  |
+| `packages/cli/src/providers/aws/iam.ts`       | `ensureExecRole`/`deleteExecRole` — per-app+stage role + scoped inline `slsv-data` policy                                                                                                     |
+| `packages/cli/src/providers/aws/secrets.ts`   | `ensureSecrets` — upsert to Secrets Manager, inject `SECRET_<NAME>=<id>` (never the value)                                                                                                    |
+| `packages/sdk/src/index.ts`                   | db/queue/storage/cache/secret/sql exports                                                                                                                                                     |
+| `packages/sdk/src/providers/aws/sql.ts`       | `makeSql` — postgres/mysql conn string → Drizzle client (dialect sniff, per-container cache)                                                                                                  |
+| `packages/sdk/src/resolve.ts`                 | logical name → env var                                                                                                                                                                        |
 
 ### Preflight lint (dev + deploy)
 
 `deploy()` calls **`lintApp(cfg, cwd)`** (`lint.ts`) before any provisioning — so both `slsv
 dev` and `slsv deploy` (they share `deploy()`) fail fast when slsv.yml doesn't match the code,
 with a clear message instead of a cryptic esbuild crash or a runtime 500. Three checks:
+
 1. **Handler + export** — each `functions.<fn>.handler` (`file.export`) resolves to an existing
    `<file>.ts` (same path `bundle.ts` compiles) that actually exports the named symbol (regex,
    covers `export const/function/{ x as handler }`).
@@ -426,10 +428,10 @@ with a clear message instead of a cryptic esbuild crash or a runtime 500. Three 
    never-referenced = warning.
 3. **Triggers** — a function's `queue: { name }` trigger and a queue's `dlq:` both must name a
    declared queue.
-Errors throw `ConfigError` (printed sans stack, exit 1); warnings print and continue. ponytail:
-regex not AST — `import * as slsv`, multi-line SDK imports, and `export * from` re-exports slip
-through; extend if a real app hits them. Tested in `lint.test.ts`; the demo template lints clean
-(dropped the unused `ADMIN_KEY` secret to keep it warning-free on fresh scaffold).
+   Errors throw `ConfigError` (printed sans stack, exit 1); warnings print and continue. ponytail:
+   regex not AST — `import * as slsv`, multi-line SDK imports, and `export * from` re-exports slip
+   through; extend if a real app hits them. Tested in `lint.test.ts`; the demo template lints clean
+   (dropped the unused `ADMIN_KEY` secret to keep it warning-free on fresh scaffold).
 
 ### CLI flag hardening (`cli.ts`)
 

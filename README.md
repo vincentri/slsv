@@ -105,10 +105,10 @@ functions:
   cron:
     runtime: nodejs20
     handler: ./src/cron.handler
-    cron: { schedule: '0 8 * * *' } # EventBridge cron (5-field)
+    cron: { schedule: "0 8 * * *" } # EventBridge cron (5-field)
 
 queues:
-  jobs: { type: sqs }                                  # standard SQS
+  jobs: { type: sqs } # standard SQS
   # ordered: { type: sqs, fifo: true }                 # FIFO ordering + dedup
   # with-dlq:
   #   type: sqs
@@ -117,11 +117,11 @@ queues:
   # dead: { type: sqs }
 
 buckets:
-  uploads: {}                                     # private — only Lambda reads/writes
-  public-assets:                                  # browser reads objects directly via bucket URL
+  uploads: {} # private — only Lambda reads/writes
+  public-assets: # browser reads objects directly via bucket URL
     publicRead: true
-  user-uploads:                                   # browser uploads directly via presigned PUT
-    cors: ['https://app.example.com']
+  user-uploads: # browser uploads directly via presigned PUT
+    cors: ["https://app.example.com"]
 
 databases: # slsv injects DATABASE_<NAME> into every function
   orders: # dynamodb — db('orders') → DATABASE_ORDERS
@@ -155,18 +155,18 @@ Three patterns, pick per-bucket:
 
 ```yaml
 buckets:
-  uploads: {}                                      # private — only Lambda reads/writes
-  public-assets:                                   # browser reads objects directly via the bucket URL
+  uploads: {} # private — only Lambda reads/writes
+  public-assets: # browser reads objects directly via the bucket URL
     publicRead: true
-  user-uploads:                                    # browser uploads directly via presigned PUT
-    cors: ['https://app.example.com']
+  user-uploads: # browser uploads directly via presigned PUT
+    cors: ["https://app.example.com"]
 ```
 
-| Config | What slsv does | When to use |
-|---|---|---|
-| `{}` | Creates the bucket, tags it. Private — no public access. | Function-side read/write only (processed data, internal artifacts) |
+| Config             | What slsv does                                                                            | When to use                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `{}`               | Creates the bucket, tags it. Private — no public access.                                  | Function-side read/write only (processed data, internal artifacts)    |
 | `publicRead: true` | Disables the 4 public-access blocks + attaches `s3:GetObject` policy for `Principal: '*'` | Avatars, processed images, static assets the browser fetches directly |
-| `cors: [...]` | Adds `PutBucketCors` allowing the listed origins, GET/PUT/POST/HEAD, all headers | Browser uploads/downloads via presigned URLs from a different origin |
+| `cors: [...]`      | Adds `PutBucketCors` allowing the listed origins, GET/PUT/POST/HEAD, all headers          | Browser uploads/downloads via presigned URLs from a different origin  |
 
 `publicRead` + `cors` can be combined, but only do that for assets you actually want public. Pair `cors:` with `putSignedUrl()`/`getSignedUrl()` in the SDK — without those, CORS is half a feature.
 
@@ -179,30 +179,30 @@ The demo template (`slsv init --demo`) covers each pattern end to end.
 Use `@slsv/sdk` — no raw AWS SDK imports. Works on any cloud slsv supports.
 
 ```ts
-import { db, queue, storage, cache } from '@slsv/sdk'
+import { db, queue, storage, cache } from "@slsv/sdk";
 
 // DynamoDB
-await db('orders').put({ id: '1', createdAt: new Date().toISOString() })
-await db('orders').get({ id: '1' })
-await db('orders').scan()
+await db("orders").put({ id: "1", createdAt: new Date().toISOString() });
+await db("orders").get({ id: "1" });
+await db("orders").scan();
 
 // SQS
-await queue('jobs').send({ userId: '123' })
+await queue("jobs").send({ userId: "123" });
 
 // S3
-await storage('uploads').put('file.txt', 'hello')
-const bytes = await storage('uploads').get('file.txt')
-const text = bytes ? new TextDecoder().decode(bytes) : undefined
+await storage("uploads").put("file.txt", "hello");
+const bytes = await storage("uploads").get("file.txt");
+const text = bytes ? new TextDecoder().decode(bytes) : undefined;
 // Presigned URLs — pair with `cors:` on the bucket so the browser can PUT/GET directly.
-const putUrl = await storage('user-uploads').putSignedUrl('avatars/1.jpg', {
+const putUrl = await storage("user-uploads").putSignedUrl("avatars/1.jpg", {
   expiresIn: 60,
-  contentType: 'image/jpeg',
-})
-const getUrl = await storage('public-assets').getSignedUrl('logo.png', { expiresIn: 3600 })
+  contentType: "image/jpeg",
+});
+const getUrl = await storage("public-assets").getSignedUrl("logo.png", { expiresIn: 3600 });
 
 // Redis / Valkey (by name — isolated keyspaces; `type: redis` and `type: valkey` are aliases)
-await cache('session').set('user:1', JSON.stringify(data), { ttl: 3600 })
-await cache('ratelimit').incr('ip:1.2.3.4')
+await cache("session").set("user:1", JSON.stringify(data), { ttl: 3600 });
+await cache("ratelimit").incr("ip:1.2.3.4");
 ```
 
 ---

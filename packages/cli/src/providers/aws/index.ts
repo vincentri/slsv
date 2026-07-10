@@ -1,63 +1,62 @@
-import { execFileSync } from 'node:child_process'
-import { envKey } from '../../env-key.js'
-import type { AppConfig } from '../../config.js'
-import { makeClients, type Clients } from './clients.js'
+import { execFileSync } from "node:child_process";
+import { envKey } from "../../env-key.js";
+import type { AppConfig } from "../../config.js";
+import { makeClients, type Clients } from "./clients.js";
 
-export type FunctionOutput = { name: string; arn: string }
-import { ensureExecRole, deleteExecRole } from './iam.js'
-import { ensureLogGroup, deleteLogGroup } from './logs.js'
-import { ensureDynamoTables } from './dynamodb.js'
-import { ensureBuckets } from './s3.js'
-import { ensureQueues, type QueueOutput } from './sqs.js'
-import { ensureSecrets } from './secrets.js'
-import { deployFunctions } from './functions.js'
-import { ensureApiGateway, deleteHttpApi } from './apigw.js'
-import { ensureCronTriggers, ensureEventTriggers } from './eventbridge.js'
-import { ensureEventSourceMappings } from './eventsource.js'
-import { tailLogs } from './logs-tail.js'
-import { ensureCacheClusters } from './redis.js'
-import { ensureDbInstances } from './databases.js'
-import { deployFrontendLocal, deployFrontendAws, destroyDistribution } from './frontend.js'
+export type FunctionOutput = { name: string; arn: string };
+import { ensureExecRole, deleteExecRole } from "./iam.js";
+import { ensureLogGroup, deleteLogGroup } from "./logs.js";
+import { ensureDynamoTables } from "./dynamodb.js";
+import { ensureBuckets } from "./s3.js";
+import { ensureQueues, type QueueOutput } from "./sqs.js";
+import { ensureSecrets } from "./secrets.js";
+import { deployFunctions } from "./functions.js";
+import { ensureApiGateway, deleteHttpApi } from "./apigw.js";
+import { ensureCronTriggers, ensureEventTriggers } from "./eventbridge.js";
+import { ensureEventSourceMappings } from "./eventsource.js";
+import { tailLogs } from "./logs-tail.js";
+import { ensureCacheClusters } from "./redis.js";
+import { ensureDbInstances } from "./databases.js";
+import { deployFrontendLocal, deployFrontendAws, destroyDistribution } from "./frontend.js";
 import {
   UpdateFunctionCodeCommand,
   DeleteFunctionCommand,
   ListFunctionsCommand,
-} from '@aws-sdk/client-lambda'
-import { DeleteTableCommand, ListTablesCommand } from '@aws-sdk/client-dynamodb'
+} from "@aws-sdk/client-lambda";
+import { DeleteTableCommand, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import {
   ListObjectsV2Command,
   DeleteObjectsCommand,
   DeleteBucketCommand,
   ListBucketsCommand,
-} from '@aws-sdk/client-s3'
-import { DeleteQueueCommand, ListQueuesCommand } from '@aws-sdk/client-sqs'
-import { DeleteSecretCommand, ListSecretsCommand } from '@aws-sdk/client-secrets-manager'
+} from "@aws-sdk/client-s3";
+import { DeleteQueueCommand, ListQueuesCommand } from "@aws-sdk/client-sqs";
+import { DeleteSecretCommand, ListSecretsCommand } from "@aws-sdk/client-secrets-manager";
 import {
   ListRulesCommand,
   ListTargetsByRuleCommand,
   RemoveTargetsCommand,
   DeleteRuleCommand,
-} from '@aws-sdk/client-eventbridge'
+} from "@aws-sdk/client-eventbridge";
 import {
   DeleteReplicationGroupCommand,
   DeleteServerlessCacheCommand,
   DescribeReplicationGroupsCommand,
   DescribeServerlessCachesCommand,
-} from '@aws-sdk/client-elasticache'
-import { DeleteDBInstanceCommand, DescribeDBInstancesCommand } from '@aws-sdk/client-rds'
+} from "@aws-sdk/client-elasticache";
+import { DeleteDBInstanceCommand, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 
-const LOCAL_ENDPOINT = 'http://localhost:4566'
 // A Lambda runs INSIDE the Floci container, where `localhost` is the container itself.
 // It must reach Floci's AWS APIs via the docker host (same trick as the redis endpoint).
-const LAMBDA_LOCAL_ENDPOINT = 'http://host.docker.internal:4566'
+const LAMBDA_LOCAL_ENDPOINT = "http://host.docker.internal:4566";
 
 // ponytail: Docker CLI + floci-<prefix><fn> naming; drop once Floci stops the container
 // on DeleteFunction.
 function killFlociContainers(prefix: string) {
-  const ids = execFileSync('docker', ['ps', '-aq', '--filter', `name=floci-${prefix}`], {
-    encoding: 'utf8',
-  }).trim()
-  if (ids) execFileSync('docker', ['rm', '-f', ...ids.split('\n')], { stdio: 'ignore' })
+  const ids = execFileSync("docker", ["ps", "-aq", "--filter", `name=floci-${prefix}`], {
+    encoding: "utf8",
+  }).trim();
+  if (ids) execFileSync("docker", ["rm", "-f", ...ids.split("\n")], { stdio: "ignore" });
 }
 
 // Drain a token-paginated AWS list call. Each SDK uses a different token field, so the
@@ -65,36 +64,36 @@ function killFlociContainers(prefix: string) {
 export async function paginate<T>(
   fetchPage: (token?: string) => Promise<{ items: T[]; next?: string }>,
 ): Promise<T[]> {
-  const out: T[] = []
-  let token: string | undefined
+  const out: T[] = [];
+  let token: string | undefined;
   do {
-    const { items, next } = await fetchPage(token)
-    out.push(...items)
-    token = next
-  } while (token)
-  return out
+    const { items, next } = await fetchPage(token);
+    out.push(...items);
+    token = next;
+  } while (token);
+  return out;
 }
 
 // Every service names its not-found error differently (ResourceNotFoundException / NoSuchBucket
 // / NoSuchEntity / QueueDoesNotExist / ReplicationGroupNotFoundFault / DBInstanceNotFound /
 // NonExistentQueue / ...) — match the common shapes instead of a per-call list. Used by destroy
 // (already-gone = success) and reconcile's frontend teardown.
-const GONE = /(NotFound|NoSuch|DoesNotExist|NonExistent)/i
+const GONE = /(NotFound|NoSuch|DoesNotExist|NonExistent)/i;
 
 export class AwsProvider {
-  private target: 'local' | 'aws'
-  private clients: Clients
-  private roleArn?: string
-  private tags: Record<string, string> = {}
-  private queueOutputs: Record<string, QueueOutput> = {}
+  private target: "local" | "aws";
+  private clients: Clients;
+  private roleArn?: string;
+  private tags: Record<string, string> = {};
+  private queueOutputs: Record<string, QueueOutput> = {};
 
-  constructor(target: 'local' | 'aws' = 'local') {
-    this.target = target
-    this.clients = makeClients(target)
+  constructor(target: "local" | "aws" = "local") {
+    this.target = target;
+    this.clients = makeClients(target);
   }
 
   async startLocalEmulator(_cwd: string, _cfg: AppConfig) {
-    await ensureFlociAvailable()
+    await ensureFlociAvailable();
   }
 
   // Deletes everything deployed under `<app>-<stage>-` — DISCOVERED by listing each service, NOT
@@ -104,8 +103,8 @@ export class AwsProvider {
   // ponytail: still left behind — dangling API-GW integrations, SQS event-source-mappings; inert,
   // re-created on next deploy. Add cleanup if Floci clutter ever matters.
   async destroyResources(cfg: AppConfig, stage: string) {
-    const appName = `${cfg.app}-${stage}`
-    console.log(`\n→ Destroy ${appName} (target ${this.target})`)
+    const appName = `${cfg.app}-${stage}`;
+    console.log(`\n→ Destroy ${appName} (target ${this.target})`);
 
     // Each delete is its own step: logs progress like deploy, treats an already-gone resource
     // as success (idempotent re-run), and — crucially — a REAL failure is recorded and the
@@ -113,21 +112,21 @@ export class AwsProvider {
     // InvalidDBInstanceState, threw and skipped every later step — CloudFront/IAM/EventBridge/
     // container sweep never ran, leaving billable resources.) Failures are reported at the end
     // and the command exits non-zero so partial teardown is never silently "done".
-    const failures: { label: string; err: string }[] = []
-    const step = async (label: string, fn: () => Promise<void>) => {
-      process.stdout.write(`    ${label} … `)
+    const failures: { label: string; err: string }[] = [];
+    const step = async (label: string, fn: () => void | Promise<void>) => {
+      process.stdout.write(`    ${label} … `);
       try {
-        await fn()
-        console.log('✓')
+        await fn();
+        console.log("✓");
       } catch (e: any) {
-        if (GONE.test(e?.name ?? '')) {
-          console.log('· already gone')
-          return
+        if (GONE.test(e?.name ?? "")) {
+          console.log("· already gone");
+          return;
         }
-        console.log(`✗ ${e?.name ?? e}`)
-        failures.push({ label, err: String(e?.message ?? e?.name ?? e) })
+        console.log(`✗ ${e?.name ?? e}`);
+        failures.push({ label, err: String(e?.message ?? e?.name ?? e) });
       }
-    }
+    };
 
     // Destroy is DISCOVERY-based, NOT yml-driven: it enumerates everything actually deployed
     // under the `<app>-<stage>-` prefix and deletes it — so a resource the user already removed
@@ -139,27 +138,31 @@ export class AwsProvider {
     // (`myapp-dev-` vs stage `dev-2` → `myapp-dev-2-*`) could be swept. Same ceiling reconcile's
     // prune already accepts; switch to the Resource Groups Tagging API (slsv:app+slsv:stage) if
     // stacks ever share a name prefix.
-    const pfx = `${appName}-`
-    const lcPfx = pfx.toLowerCase()
+    const pfx = `${appName}-`;
+    const lcPfx = pfx.toLowerCase();
 
     // API Gateway (deletes its routes/integrations/stages too)
-    await step('API Gateway', () => deleteHttpApi(this.clients.apigw, appName).then(() => undefined))
+    await step("API Gateway", () =>
+      deleteHttpApi(this.clients.apigw, appName).then(() => undefined),
+    );
 
     // Lambda (+ each function's log group, else logs linger and bill after teardown)
     const fns = await paginate((Marker) =>
       this.clients.lambda
         .send(new ListFunctionsCommand({ Marker }))
         .then((r) => ({ items: r.Functions ?? [], next: r.NextMarker })),
-    )
+    );
     for (const fn of fns) {
-      const fnName = fn.FunctionName
-      if (!fnName?.startsWith(pfx)) continue
+      const fnName = fn.FunctionName;
+      if (!fnName?.startsWith(pfx)) continue;
       await step(`Lambda ${fnName}`, () =>
-        this.clients.lambda.send(new DeleteFunctionCommand({ FunctionName: fnName })).then(() => undefined),
-      )
+        this.clients.lambda
+          .send(new DeleteFunctionCommand({ FunctionName: fnName }))
+          .then(() => undefined),
+      );
       await step(`Log group ${fnName}`, () =>
         deleteLogGroup(this.clients.logs, fnName).then(() => undefined),
-      )
+      );
     }
 
     // DynamoDB
@@ -167,69 +170,71 @@ export class AwsProvider {
       this.clients.dynamo
         .send(new ListTablesCommand({ ExclusiveStartTableName }))
         .then((r) => ({ items: r.TableNames ?? [], next: r.LastEvaluatedTableName })),
-    )
+    );
     for (const t of tables)
       if (t.startsWith(pfx))
         await step(`DynamoDB ${t}`, () =>
           this.clients.dynamo.send(new DeleteTableCommand({ TableName: t })).then(() => undefined),
-        )
+        );
 
     // S3 (empty first, AWS refuses non-empty delete). Prefix discovery catches the frontend
     // hosting bucket too (created by deployFrontend, not declared under `buckets:`).
-    const s3 = await this.clients.s3.send(new ListBucketsCommand({}))
+    const s3 = await this.clients.s3.send(new ListBucketsCommand({}));
     for (const b of s3.Buckets ?? [])
       if (b.Name?.startsWith(lcPfx))
-        await step(`S3 ${b.Name}`, () => this.emptyAndDeleteBucket(b.Name!).then(() => undefined))
+        await step(`S3 ${b.Name}`, () => this.emptyAndDeleteBucket(b.Name!).then(() => undefined));
 
     // SQS
     const queues = await paginate((NextToken) =>
       this.clients.sqs
         .send(new ListQueuesCommand({ QueueNamePrefix: pfx, NextToken }))
         .then((r) => ({ items: r.QueueUrls ?? [], next: r.NextToken })),
-    )
+    );
     for (const url of queues)
-      await step(`SQS ${url.split('/').pop()}`, () =>
+      await step(`SQS ${url.split("/").pop()}`, () =>
         this.clients.sqs.send(new DeleteQueueCommand({ QueueUrl: url })).then(() => undefined),
-      )
+      );
 
     // Secrets (created stage-namespaced `${appName}-${name}`)
     const secrets = await paginate((NextToken) =>
       this.clients.secrets
         .send(new ListSecretsCommand({ NextToken }))
         .then((r) => ({ items: r.SecretList ?? [], next: r.NextToken })),
-    )
+    );
     for (const s of secrets)
       if (s.Name?.startsWith(pfx))
         await step(`Secret ${s.Name}`, () =>
           this.clients.secrets
             .send(new DeleteSecretCommand({ SecretId: s.Name!, ForceDeleteWithoutRecovery: true }))
             .then(() => undefined),
-        )
+        );
 
     // ElastiCache — node groups (DescribeReplicationGroups) and serverless caches
     // (DescribeServerlessCaches) are separate APIs; sweep both by id prefix so we don't need the
     // yml's serverless flag.
     const rgs = await this.clients.elasticache
       .send(new DescribeReplicationGroupsCommand({}))
-      .catch(() => null)
+      .catch(() => null);
     for (const g of rgs?.ReplicationGroups ?? [])
       if (g.ReplicationGroupId?.startsWith(pfx))
         await step(`Cache ${g.ReplicationGroupId}`, () =>
           this.clients.elasticache
             .send(new DeleteReplicationGroupCommand({ ReplicationGroupId: g.ReplicationGroupId! }))
             .then(() => undefined),
-        )
-    if (this.target === 'aws') {
+        );
+    if (this.target === "aws") {
       const scs = await this.clients.elasticache
         .send(new DescribeServerlessCachesCommand({}))
-        .catch(() => null)
+        .catch(() => null);
       for (const c of scs?.ServerlessCaches ?? [])
         if (c.ServerlessCacheName?.startsWith(pfx))
           await step(`Cache ${c.ServerlessCacheName}`, () =>
             this.clients.elasticache
-              .send(new DeleteServerlessCacheCommand({ ServerlessCacheName: c.ServerlessCacheName! }))
+              .send(
+                new DeleteServerlessCacheCommand({ ServerlessCacheName: c.ServerlessCacheName! }),
+              )
               .then(() => undefined),
-          )
+          );
     }
 
     // RDS (postgres/mysql). Discovery has no yml, so always skip the final snapshot (matches the
@@ -239,10 +244,10 @@ export class AwsProvider {
       this.clients.rds
         .send(new DescribeDBInstancesCommand({ Marker }))
         .then((r) => ({ items: r.DBInstances ?? [], next: r.Marker })),
-    )
+    );
     for (const d of dbs) {
-      const id = d.DBInstanceIdentifier
-      if (!id?.startsWith(pfx)) continue
+      const id = d.DBInstanceIdentifier;
+      if (!id?.startsWith(pfx)) continue;
       await step(`RDS ${id}`, () =>
         this.clients.rds
           .send(
@@ -253,21 +258,22 @@ export class AwsProvider {
             }),
           )
           .then(() => undefined),
-      )
+      );
     }
 
     // CloudFront — discovery-based like the rest: destroyDistribution finds it by Comment
     // (`slsv:<appName>`), so a distribution deployed then dropped from the yml is still torn down.
     // Idempotent fast no-op when none exists. Disable → wait → delete: a distribution can't be
     // deleted while enabled, and both transitions take ~10-20 min each (aws only).
-    if (this.target === 'aws') {
-      await step('CloudFront', () =>
-        destroyDistribution(this.clients.cloudfront, appName).then(() => undefined),
-      )
+    if (this.target === "aws") {
+      const result = await destroyDistribution(this.clients.cloudfront, appName);
+      console.log(`    CloudFront … ${result === "deleted" ? "✓" : "· none to delete"}`);
     }
 
     // IAM exec role (per app+stage)
-    await step('IAM exec role', () => deleteExecRole(this.clients.iam, appName).then(() => undefined))
+    await step("IAM exec role", () =>
+      deleteExecRole(this.clients.iam, appName).then(() => undefined),
+    );
 
     // EventBridge cron/event rules (<app>-<stage>-<fn>[-evt]). MUST delete on destroy: reconcile
     // only prunes rules for REMOVED functions, so a plain destroy left every rule live. On Floci
@@ -278,19 +284,19 @@ export class AwsProvider {
       this.clients.events
         .send(new ListRulesCommand({ NamePrefix: appName, NextToken }))
         .then((r) => ({ items: r.Rules ?? [], next: r.NextToken })),
-    )
+    );
     for (const rule of rules) {
-      const name = rule.Name
-      if (!name) continue
+      const name = rule.Name;
+      if (!name) continue;
       await step(`EventBridge rule ${name}`, async () => {
         const tgts = await this.clients.events
           .send(new ListTargetsByRuleCommand({ Rule: name }))
-          .catch(() => null)
-        const ids = (tgts?.Targets ?? []).map((t) => t.Id).filter((id): id is string => !!id)
+          .catch(() => null);
+        const ids = (tgts?.Targets ?? []).map((t) => t.Id).filter((id): id is string => !!id);
         if (ids.length)
-          await this.clients.events.send(new RemoveTargetsCommand({ Rule: name, Ids: ids }))
-        await this.clients.events.send(new DeleteRuleCommand({ Name: name }))
-      })
+          await this.clients.events.send(new RemoveTargetsCommand({ Rule: name, Ids: ids }));
+        await this.clients.events.send(new DeleteRuleCommand({ Name: name }));
+      });
     }
 
     // Floci leaves Lambda execution containers running after DeleteFunction — its container
@@ -298,20 +304,20 @@ export class AwsProvider {
     // them by name so `slsv destroy --target local` actually stops them. `name=floci-<app>-
     // <stage>-` matches only this stack's lambda containers (rds/valkey use floci-rds-/
     // floci-valkey- prefixes).
-    if (this.target === 'local') {
-      await step('Floci containers', () => {
-        killFlociContainers(`${appName}-`)
-      })
+    if (this.target === "local") {
+      await step("Floci containers", () => {
+        killFlociContainers(`${appName}-`);
+      });
     }
 
     if (failures.length) {
-      console.error(`\n✗ Destroy incomplete — ${failures.length} resource(s) failed:`)
-      for (const f of failures) console.error(`    ${f.label}: ${f.err}`)
+      console.error(`\n✗ Destroy incomplete — ${failures.length} resource(s) failed:`);
+      for (const f of failures) console.error(`    ${f.label}: ${f.err}`);
       throw new Error(
         `destroy left ${failures.length} resource(s) — re-run \`slsv destroy\` or delete manually`,
-      )
+      );
     }
-    console.log('\n✓ Destroy complete — all resources deleted')
+    console.log("\n✓ Destroy complete — all resources deleted");
   }
 
   // Empty + delete an S3 bucket (AWS refuses a non-empty delete). Idempotent: an already-gone
@@ -320,19 +326,19 @@ export class AwsProvider {
   // buckets; page the listing if a bucket ever holds more.
   private async emptyAndDeleteBucket(bucket: string) {
     try {
-      const listed = await this.clients.s3.send(new ListObjectsV2Command({ Bucket: bucket }))
+      const listed = await this.clients.s3.send(new ListObjectsV2Command({ Bucket: bucket }));
       if (listed.Contents?.length)
         await this.clients.s3.send(
           new DeleteObjectsCommand({
             Bucket: bucket,
             Delete: { Objects: listed.Contents.map((o) => ({ Key: o.Key! })) },
           }),
-        )
-      await this.clients.s3.send(new DeleteBucketCommand({ Bucket: bucket }))
-      return true
+        );
+      await this.clients.s3.send(new DeleteBucketCommand({ Bucket: bucket }));
+      return true;
     } catch (e: any) {
-      if (GONE.test(e?.name ?? '')) return false
-      throw e
+      if (GONE.test(e?.name ?? "")) return false;
+      throw e;
     }
   }
 
@@ -346,44 +352,44 @@ export class AwsProvider {
    * it. Use `slsv destroy` (or delete manually) to remove those on purpose.
    */
   async reconcile(cfg: AppConfig, stage: string) {
-    const prefix = `${cfg.app}-${stage}-`
-    const owned = (n?: string): n is string => !!n && n.startsWith(prefix)
-    const logical = (n: string) => n.slice(prefix.length)
+    const prefix = `${cfg.app}-${stage}-`;
+    const owned = (n?: string): n is string => !!n && n.startsWith(prefix);
+    const logical = (n: string) => n.slice(prefix.length);
 
     // --- Lambda: auto-prune orphans ---
-    const wantFns = new Set(Object.keys(cfg.functions ?? {}))
+    const wantFns = new Set(Object.keys(cfg.functions ?? {}));
     const allFns = await paginate((Marker) =>
       this.clients.lambda
         .send(new ListFunctionsCommand({ Marker }))
         .then((r) => ({ items: r.Functions ?? [], next: r.NextMarker })),
-    )
+    );
     for (const fn of allFns) {
       if (owned(fn.FunctionName) && !wantFns.has(logical(fn.FunctionName))) {
         try {
           await this.clients.lambda.send(
             new DeleteFunctionCommand({ FunctionName: fn.FunctionName }),
-          )
-          console.log(`  pruned function ${fn.FunctionName}`)
+          );
+          console.log(`  pruned function ${fn.FunctionName}`);
         } catch (e: any) {
           // Only an already-gone function is a no-op success. A REAL failure (IAM denial, AWS
           // throttle, function stuck) was previously swallowed AND still printed "pruned" — so
           // the fn survived while the log claimed removal ("lambda not removed"). Surface it
           // instead; keep going so one stuck fn doesn't block the rest of reconcile.
-          if (!GONE.test(e?.name ?? '')) {
-            console.warn(`  ⚠ could not prune function ${fn.FunctionName}: ${e?.name ?? e}`)
-            continue
+          if (!GONE.test(e?.name ?? "")) {
+            console.warn(`  ⚠ could not prune function ${fn.FunctionName}: ${e?.name ?? e}`);
+            continue;
           }
         }
         // Delete the pruned function's log group too, else logs linger and bill after removal
         // (destroy already does this; reconcile didn't).
-        await deleteLogGroup(this.clients.logs, fn.FunctionName)
+        await deleteLogGroup(this.clients.logs, fn.FunctionName);
         // --target local: Floci leaves the Lambda CONTAINER running after DeleteFunction (its
         // container lifecycle isn't tied to its API — same desync destroy sweeps). Without this
         // the API "removed" the fn but the container keeps executing (a pruned cron/queue fn
         // still fires) → "lambda not removed". Sweep its container by name.
-        if (this.target === 'local') {
+        if (this.target === "local") {
           try {
-            killFlociContainers(fn.FunctionName)
+            killFlociContainers(fn.FunctionName);
           } catch {
             // docker missing / nothing to remove — best-effort, never fail reconcile
           }
@@ -396,40 +402,38 @@ export class AwsProvider {
     // (event). A dropped cron/event trigger — or a removed function — leaves its rule live
     // and still firing (cron) or matched (event), invoking nothing / erroring. Unlike a
     // dangling API-GW integration (inert), an active rule is wrong behavior, so prune it.
-    const EVT_SUFFIX = '-evt'
+    const EVT_SUFFIX = "-evt";
     const wantCron = new Set(
       Object.entries(cfg.functions ?? {})
         .filter(([, f]) => f.cron)
         .map(([k]) => k),
-    )
+    );
     const wantEvent = new Set(
       Object.entries(cfg.functions ?? {})
         .filter(([, f]) => f.event)
         .map(([k]) => k),
-    )
+    );
     const allRules = await paginate((NextToken) =>
       this.clients.events
         .send(new ListRulesCommand({ NextToken }))
         .then((r) => ({ items: r.Rules ?? [], next: r.NextToken })),
-    )
+    );
     for (const r of allRules) {
-      const name = r.Name ?? ''
-      if (!owned(name)) continue
-      const isEvt = name.endsWith(EVT_SUFFIX)
-      const fnLogical = isEvt ? logical(name.slice(0, -EVT_SUFFIX.length)) : logical(name)
-      if ((isEvt ? wantEvent : wantCron).has(fnLogical)) continue
+      const name = r.Name ?? "";
+      if (!owned(name)) continue;
+      const isEvt = name.endsWith(EVT_SUFFIX);
+      const fnLogical = isEvt ? logical(name.slice(0, -EVT_SUFFIX.length)) : logical(name);
+      if ((isEvt ? wantEvent : wantCron).has(fnLogical)) continue;
       // AWS refuses DeleteRule while targets exist; remove them first.
-      const tgts = await this.clients.events.send(new ListTargetsByRuleCommand({ Rule: name }))
-      const ids = (tgts.Targets ?? []).map((t) => t.Id!)
+      const tgts = await this.clients.events.send(new ListTargetsByRuleCommand({ Rule: name }));
+      const ids = (tgts.Targets ?? []).map((t) => t.Id!);
       if (ids.length) {
         await this.clients.events
           .send(new RemoveTargetsCommand({ Rule: name, Ids: ids }))
-          .catch(() => {}) // racing prune — fine, delete below still attempted
+          .catch(() => {}); // racing prune — fine, delete below still attempted
       }
-      await this.clients.events
-        .send(new DeleteRuleCommand({ Name: name }))
-        .catch(() => {}) // gone already / racing another prune — fine
-      console.log(`  pruned event rule ${name}`)
+      await this.clients.events.send(new DeleteRuleCommand({ Name: name })).catch(() => {}); // gone already / racing another prune — fine
+      console.log(`  pruned event rule ${name}`);
     }
 
     // --- Data stores (DynamoDB / S3 buckets / RDS) ---
@@ -437,58 +441,58 @@ export class AwsProvider {
     // manifest is the full source of truth. Set `autoRemove: false` to keep the old safe
     // behavior: orphans are reported and left until `slsv destroy`. This is destructive by
     // design — a store removed from slsv.yml takes its data with it on the next deploy.
-    const autoRemove = cfg.autoRemove ?? true
-    const dbEntries = Object.entries(cfg.databases ?? {})
-    const wantTables = new Set(dbEntries.filter(([, d]) => d.type === 'dynamodb').map(([k]) => k))
+    const autoRemove = cfg.autoRemove ?? true;
+    const dbEntries = Object.entries(cfg.databases ?? {});
+    const wantTables = new Set(dbEntries.filter(([, d]) => d.type === "dynamodb").map(([k]) => k));
     const wantDbs = new Set(
-      dbEntries.filter(([, d]) => d.type === 'postgres' || d.type === 'mysql').map(([k]) => k),
-    )
-    const wantBuckets = new Set(Object.keys(cfg.buckets ?? {}))
-    const orphans: string[] = []
+      dbEntries.filter(([, d]) => d.type === "postgres" || d.type === "mysql").map(([k]) => k),
+    );
+    const wantBuckets = new Set(Object.keys(cfg.buckets ?? {}));
+    const orphans: string[] = [];
     // autoRemove ? delete now (swallow already-gone) : collect for the end-of-run warning.
     const handleOrphan = async (label: string, del: () => Promise<void>) => {
       if (!autoRemove) {
-        orphans.push(label)
-        return
+        orphans.push(label);
+        return;
       }
       try {
-        await del()
-        console.log(`→ Reconcile: removed ${label}`)
+        await del();
+        console.log(`→ Reconcile: removed ${label}`);
       } catch (e: any) {
-        if (!GONE.test(e?.name ?? '')) throw e
+        if (!GONE.test(e?.name ?? "")) throw e;
       }
-    }
+    };
 
     const allTables = await paginate((ExclusiveStartTableName) =>
       this.clients.dynamo
         .send(new ListTablesCommand({ ExclusiveStartTableName }))
         .then((r) => ({ items: r.TableNames ?? [], next: r.LastEvaluatedTableName })),
-    )
+    );
     for (const t of allTables)
       if (owned(t) && !wantTables.has(logical(t)))
         await handleOrphan(`table ${t}`, () =>
           this.clients.dynamo.send(new DeleteTableCommand({ TableName: t })).then(() => undefined),
-        )
+        );
 
     // S3 bucket names are lowercased at create — compare against a lowercased prefix.
-    const lcPrefix = prefix.toLowerCase()
+    const lcPrefix = prefix.toLowerCase();
     // The frontend hosting bucket (<prefix>frontend) + CloudFront are slsv-managed BUILD
     // ARTIFACTS (created by deployFrontend, not declared under buckets:) — not user data, they
     // hold only the last build output and are re-created every deploy. So unlike data stores
     // (report-only), dropping `frontend:` from the yml TEARS THEM DOWN here, like a stateless
     // Lambda/EventBridge orphan. While a frontend IS configured they're excluded from the
     // orphan scan below (slsv owns them).
-    const frontendBucket = `${lcPrefix}frontend`
+    const frontendBucket = `${lcPrefix}frontend`;
     if (!cfg.frontend) {
       if (await this.emptyAndDeleteBucket(frontendBucket))
-        console.log(`→ Reconcile: pruned frontend bucket ${frontendBucket}`)
+        console.log(`→ Reconcile: pruned frontend bucket ${frontendBucket}`);
       // ponytail: destroyDistribution disables→waits→deletes (~15-20 min), but only on the one
       // redeploy that drops frontend; idempotent by Comment (fast no-op when none exists).
       await destroyDistribution(this.clients.cloudfront, `${cfg.app}-${stage}`).catch((e) => {
-        if (!GONE.test(e?.name ?? '')) throw e
-      })
+        if (!GONE.test(e?.name ?? "")) throw e;
+      });
     }
-    const buckets = await this.clients.s3.send(new ListBucketsCommand({}))
+    const buckets = await this.clients.s3.send(new ListBucketsCommand({}));
     for (const b of buckets.Buckets ?? [])
       if (
         b.Name?.startsWith(lcPrefix) &&
@@ -497,13 +501,13 @@ export class AwsProvider {
       )
         await handleOrphan(`bucket ${b.Name}`, () =>
           this.emptyAndDeleteBucket(b.Name!).then(() => undefined),
-        )
+        );
 
     const allDbs = await paginate((Marker) =>
       this.clients.rds
         .send(new DescribeDBInstancesCommand({ Marker }))
         .then((r) => ({ items: r.DBInstances ?? [], next: r.Marker })),
-    )
+    );
     for (const d of allDbs)
       if (owned(d.DBInstanceIdentifier) && !wantDbs.has(logical(d.DBInstanceIdentifier)))
         await handleOrphan(`database ${d.DBInstanceIdentifier}`, () =>
@@ -518,17 +522,17 @@ export class AwsProvider {
               }),
             )
             .then(() => undefined),
-        )
+        );
 
     // autoRemove=false: orphans were collected, not deleted — warn and leave them for `slsv destroy`.
     if (orphans.length) {
       console.warn(
         `\n⚠ ${orphans.length} data resource(s) no longer in slsv.yml but still deployed:`,
-      )
-      for (const o of orphans) console.warn(`    ${o}`)
+      );
+      for (const o of orphans) console.warn(`    ${o}`);
       console.warn(
         `  Kept (autoRemove: false). Remove with \`slsv destroy\`, or set autoRemove: true (default) to prune on deploy.\n`,
-      )
+      );
     }
   }
 
@@ -538,40 +542,40 @@ export class AwsProvider {
     tags: Record<string, string>,
     logRetentionDays: number,
   ) {
-    this.tags = tags
-    if (functionNames.length) console.log('→ IAM exec role')
-    this.roleArn = await ensureExecRole(this.clients.iam, appName, tags)
+    this.tags = tags;
+    if (functionNames.length) console.log("→ IAM exec role");
+    this.roleArn = await ensureExecRole(this.clients.iam, appName, tags);
 
-    if (functionNames.length) console.log('→ CloudWatch log groups')
+    if (functionNames.length) console.log("→ CloudWatch log groups");
     await Promise.all(
       functionNames.map((name) =>
         ensureLogGroup(this.clients.logs, `${appName}-${name}`, logRetentionDays),
       ),
-    )
+    );
   }
 
-  async ensureBuckets(buckets: AppConfig['buckets'], appName: string) {
-    return ensureBuckets(this.clients.s3, buckets, appName, this.tags)
+  async ensureBuckets(buckets: AppConfig["buckets"], appName: string) {
+    return ensureBuckets(this.clients.s3, buckets, appName, this.tags);
   }
 
   async ensureQueues(
-    queues: AppConfig['queues'],
+    queues: AppConfig["queues"],
     appName: string,
   ): Promise<Record<string, string>> {
-    this.queueOutputs = await ensureQueues(this.clients.sqs, queues, appName, this.tags)
-    const envVars: Record<string, string> = {}
+    this.queueOutputs = await ensureQueues(this.clients.sqs, queues, appName, this.tags);
+    const envVars: Record<string, string> = {};
     for (const [name, q] of Object.entries(this.queueOutputs)) {
-      envVars[envKey('QUEUE', name)] = q.url
+      envVars[envKey("QUEUE", name)] = q.url;
     }
-    return envVars
+    return envVars;
   }
 
   async ensureSecrets(secrets: string[], env: Record<string, string | undefined>, prefix: string) {
-    return ensureSecrets(this.clients.secrets, secrets, env, prefix, this.tags)
+    return ensureSecrets(this.clients.secrets, secrets, env, prefix, this.tags);
   }
 
   async ensureCaches(
-    caches: AppConfig['caches'],
+    caches: AppConfig["caches"],
     appName: string,
   ): Promise<Record<string, string>> {
     // Each caches.<name> → ElastiCache Redis/Valkey group (Floci locally, real AWS for --target aws).
@@ -583,20 +587,25 @@ export class AwsProvider {
       caches,
       appName,
       this.tags,
-      this.target === 'local',
-    )
+      this.target === "local",
+    );
   }
 
   async ensureDatabases(
-    databases: AppConfig['databases'],
+    databases: AppConfig["databases"],
     appName: string,
     cwd: string,
   ): Promise<Record<string, string>> {
     // DynamoDB entries: provision tables, inject DATABASE_<NAME>=table-name
     const dynamoEntries = Object.fromEntries(
-      Object.entries(databases ?? {}).filter(([, v]) => v.type === 'dynamodb'),
-    ) as Record<string, import('../../config.js').DynamoDbDef>
-    const dynamoEnvs = await ensureDynamoTables(this.clients.dynamo, dynamoEntries, appName, this.tags)
+      Object.entries(databases ?? {}).filter(([, v]) => v.type === "dynamodb"),
+    ) as Record<string, import("../../config.js").DynamoDbDef>;
+    const dynamoEnvs = await ensureDynamoTables(
+      this.clients.dynamo,
+      dynamoEntries,
+      appName,
+      this.tags,
+    );
 
     // Postgres/MySQL: provisioned via the RDS API (Floci locally, real AWS for --target aws).
     // init_sql runs once on first creation. Target-agnostic — the client endpoint decides where.
@@ -606,14 +615,14 @@ export class AwsProvider {
       appName,
       cwd,
       this.tags,
-      this.target === 'local',
-    )
+      this.target === "local",
+    );
 
-    return { ...dynamoEnvs, ...rdsEnvs }
+    return { ...dynamoEnvs, ...rdsEnvs };
   }
 
   async deployFunctions(
-    functions: AppConfig['functions'],
+    functions: AppConfig["functions"],
     appName: string,
     envVars: Record<string, string>,
     cwd: string,
@@ -622,14 +631,14 @@ export class AwsProvider {
     // host — unreachable from inside the Lambda container. Rewrite to the docker host, same
     // as AWS_ENDPOINT_URL. SQS uses the QueueUrl's host directly, ignoring AWS_ENDPOINT_URL.
     const localizedEnv =
-      this.target === 'local'
+      this.target === "local"
         ? Object.fromEntries(
             Object.entries(envVars).map(([k, v]) => [
               k,
-              v.replaceAll('localhost:4566', 'host.docker.internal:4566'),
+              v.replaceAll("localhost:4566", "host.docker.internal:4566"),
             ]),
           )
-        : envVars
+        : envVars;
 
     const outputs = await deployFunctions(
       this.clients.lambda,
@@ -638,10 +647,10 @@ export class AwsProvider {
       this.roleArn!,
       localizedEnv,
       cwd,
-      { localEndpoint: this.target === 'local' ? LAMBDA_LOCAL_ENDPOINT : undefined },
+      { localEndpoint: this.target === "local" ? LAMBDA_LOCAL_ENDPOINT : undefined },
       this.tags,
-    )
-    return outputs
+    );
+    return outputs;
   }
 
   async updateFunctionCode(fnName: string, zip: Uint8Array) {
@@ -650,46 +659,41 @@ export class AwsProvider {
         FunctionName: fnName,
         ZipFile: zip,
       }),
-    )
+    );
   }
 
   async wireHttp(
-    functions: AppConfig['functions'],
+    functions: AppConfig["functions"],
     fnOutputs: Record<string, FunctionOutput>,
     appName: string,
     corsOrigins?: string[],
   ): Promise<string | undefined> {
-    if (!functions || !Object.values(functions).some((f) => f.http?.length)) return undefined
-    console.log('→ API Gateway')
+    if (!functions || !Object.values(functions).some((f) => f.http?.length)) return undefined;
+    console.log("→ API Gateway");
     return ensureApiGateway(
       this.clients.apigw,
       this.clients.lambda,
       functions,
       fnOutputs,
       appName,
-      this.target === 'local',
+      this.target === "local",
       corsOrigins,
-    )
+    );
   }
 
-  async wireQueues(functions: AppConfig['functions'], fnOutputs: Record<string, FunctionOutput>) {
-    if (!functions || !Object.values(functions).some((f) => f.queue)) return
-    console.log('→ SQS event source mappings')
-    await ensureEventSourceMappings(
-      this.clients.lambda,
-      functions,
-      fnOutputs,
-      this.queueOutputs,
-    )
+  async wireQueues(functions: AppConfig["functions"], fnOutputs: Record<string, FunctionOutput>) {
+    if (!functions || !Object.values(functions).some((f) => f.queue)) return;
+    console.log("→ SQS event source mappings");
+    await ensureEventSourceMappings(this.clients.lambda, functions, fnOutputs, this.queueOutputs);
   }
 
   async wireCron(
-    functions: AppConfig['functions'],
+    functions: AppConfig["functions"],
     fnOutputs: Record<string, FunctionOutput>,
     appName: string,
   ) {
-    if (!functions || !Object.values(functions).some((f) => f.cron || f.event)) return
-    console.log('→ EventBridge rules')
+    if (!functions || !Object.values(functions).some((f) => f.cron || f.event)) return;
+    console.log("→ EventBridge rules");
     await ensureCronTriggers(
       this.clients.events,
       this.clients.lambda,
@@ -697,7 +701,7 @@ export class AwsProvider {
       fnOutputs,
       appName,
       this.tags,
-    )
+    );
     await ensureEventTriggers(
       this.clients.events,
       this.clients.lambda,
@@ -705,24 +709,24 @@ export class AwsProvider {
       fnOutputs,
       appName,
       this.tags,
-    )
+    );
   }
 
   async deployFrontend(
-    frontend: AppConfig['frontend'],
+    frontend: AppConfig["frontend"],
     appName: string,
     cwd: string,
     apiUrl?: string,
   ): Promise<string | undefined> {
-    if (!frontend) return undefined
-    console.log('\nFrontend:')
-    if (this.target === 'local') return deployFrontendLocal(frontend, cwd, apiUrl)
+    if (!frontend) return undefined;
+    console.log("\nFrontend:");
+    if (this.target === "local") return deployFrontendLocal(frontend, cwd, apiUrl);
     // Resolve region from the S3 client's own config (full AWS chain: AWS_REGION,
     // AWS_DEFAULT_REGION, profile, ...) so the website URL matches where the bucket was
     // actually created. `process.env.AWS_REGION ?? 'us-east-1'` mismatched when the region
     // came from a profile / AWS_DEFAULT_REGION.
-    const regionCfg = this.clients.s3.config.region
-    const region = typeof regionCfg === 'function' ? await regionCfg() : regionCfg
+    const regionCfg = this.clients.s3.config.region;
+    const region = typeof regionCfg === "function" ? await regionCfg() : regionCfg;
     return deployFrontendAws(
       this.clients.s3,
       this.clients.cloudfront,
@@ -732,19 +736,21 @@ export class AwsProvider {
       region,
       this.tags,
       apiUrl,
-    )
+    );
   }
 
   async tailLogs(fnName: string, follow: boolean) {
-    await tailLogs(this.clients.logs, fnName, follow)
+    await tailLogs(this.clients.logs, fnName, follow);
   }
 }
 
 async function ensureFlociAvailable() {
   try {
-    const res = await fetch('http://localhost:4566/')
-    if (!res.ok) throw new Error(String(res.status))
+    const res = await fetch("http://localhost:4566/");
+    if (!res.ok) throw new Error(String(res.status));
   } catch {
-    throw new Error('Floci is not reachable at http://localhost:4566. Start Floci before running slsv.')
+    throw new Error(
+      "Floci is not reachable at http://localhost:4566. Start Floci before running slsv.",
+    );
   }
 }

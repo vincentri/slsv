@@ -4,10 +4,10 @@ import {
   SendMessageBatchCommand,
   ReceiveMessageCommand,
   DeleteMessageCommand,
-} from '@aws-sdk/client-sqs'
-import type { QueueClient, ReceivedMessage } from '../../types.js'
+} from "@aws-sdk/client-sqs";
+import type { QueueClient, ReceivedMessage } from "../../types.js";
 
-const sqs = new SQSClient({})
+const sqs = new SQSClient({});
 
 export function makeQueue(queueUrl: string): QueueClient {
   return {
@@ -15,26 +15,26 @@ export function makeQueue(queueUrl: string): QueueClient {
       await sqs.send(
         new SendMessageCommand({
           QueueUrl: queueUrl,
-          MessageBody: typeof body === 'string' ? body : JSON.stringify(body),
+          MessageBody: typeof body === "string" ? body : JSON.stringify(body),
           // ponytail: standard queues only — FIFO rejects per-message DelaySeconds
           // (delay must be configured on the queue itself).
           ...(opts.delaySeconds !== undefined ? { DelaySeconds: opts.delaySeconds } : {}),
         }),
-      )
+      );
     },
 
     async sendBatch(bodies: any[]) {
       for (let i = 0; i < bodies.length; i += 10) {
-        const chunk = bodies.slice(i, i + 10)
+        const chunk = bodies.slice(i, i + 10);
         await sqs.send(
           new SendMessageBatchCommand({
             QueueUrl: queueUrl,
             Entries: chunk.map((b, idx) => ({
               Id: String(i + idx),
-              MessageBody: typeof b === 'string' ? b : JSON.stringify(b),
+              MessageBody: typeof b === "string" ? b : JSON.stringify(b),
             })),
           }),
-        )
+        );
       }
     },
 
@@ -45,24 +45,26 @@ export function makeQueue(queueUrl: string): QueueClient {
           MaxNumberOfMessages: opts.max ?? 1,
           WaitTimeSeconds: opts.waitSeconds ?? 0,
         }),
-      )
+      );
       return (r.Messages ?? []).map((m) => ({
         body: parseBody(m.Body),
         receiptHandle: m.ReceiptHandle!,
-      }))
+      }));
     },
 
     async delete(receiptHandle: string) {
-      await sqs.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: receiptHandle }))
+      await sqs.send(
+        new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: receiptHandle }),
+      );
     },
-  }
+  };
 }
 
 function parseBody(s?: string): any {
-  if (s == null) return s
+  if (s == null) return s;
   try {
-    return JSON.parse(s)
+    return JSON.parse(s);
   } catch {
-    return s
+    return s;
   }
 }

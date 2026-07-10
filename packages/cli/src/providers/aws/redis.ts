@@ -6,11 +6,11 @@ import {
   DescribeReplicationGroupsCommand,
   type CreateReplicationGroupCommandInput,
   type ElastiCacheClient,
-} from '@aws-sdk/client-elasticache'
-import { execFileSync } from 'node:child_process'
-import { envKey } from '../../env-key.js'
-import { asTagArray } from './tags.js'
-import type { AppConfig } from '../../config.js'
+} from "@aws-sdk/client-elasticache";
+import { execFileSync } from "node:child_process";
+import { envKey } from "../../env-key.js";
+import { asTagArray } from "./tags.js";
+import type { AppConfig } from "../../config.js";
 
 // Each caches.<name> → its own ElastiCache Redis/Valkey replication group.
 // Redis/Valkey MUST use CreateReplicationGroup — CreateCacheCluster only supports memcached.
@@ -25,34 +25,34 @@ import type { AppConfig } from '../../config.js'
 //     we read it out-of-band via `docker inspect`. See ensureLocalCache.
 export async function ensureCacheClusters(
   client: ElastiCacheClient,
-  caches: AppConfig['caches'],
+  caches: AppConfig["caches"],
   appName: string,
   tags: Record<string, string>,
   local: boolean,
 ): Promise<Record<string, string>> {
-  const envVars: Record<string, string> = {}
-  if (!caches) return envVars
+  const envVars: Record<string, string> = {};
+  if (!caches) return envVars;
   for (const [name, cfg] of Object.entries(caches)) {
-    const clusterId = `${appName}-${name}`
+    const clusterId = `${appName}-${name}`;
     const createInput: CreateReplicationGroupCommandInput = {
       ReplicationGroupId: clusterId,
       ReplicationGroupDescription: `slsv cache ${name}`,
-      Engine: 'valkey',
+      Engine: "valkey",
       // ponytail: knobs apply on --target aws; floci runs single-instance regardless.
       // t4g (Graviton): cheaper AND better AZ capacity than t3 (t3.micro often stalls
       // "creating" in capacity-tight regions like ap-southeast-1). Override via nodeType.
-      CacheNodeType: cfg.nodeType ?? 'cache.t4g.micro',
+      CacheNodeType: cfg.nodeType ?? "cache.t4g.micro",
       NumCacheClusters: cfg.nodes ?? 1,
       // Real AWS requires this explicitly; false keeps the plain redis:// connection
       // string the SDK builds working (rediss:// TLS would need client changes).
       TransitEncryptionEnabled: false,
       Tags: asTagArray(tags),
-    }
+    };
 
     if (local) {
-      const ip = await ensureLocalCache(client, clusterId, createInput)
-      envVars[envKey('REDIS', name)] = `redis://${ip}:6379`
-      continue
+      const ip = await ensureLocalCache(client, clusterId, createInput);
+      envVars[envKey("REDIS", name)] = `redis://${ip}:6379`;
+      continue;
     }
 
     // aws serverless (opt-in per cache: serverless: true). No node sizing — auto-scales,
@@ -60,31 +60,31 @@ export async function ensureCacheClusters(
     // endpoint (ioredis enables TLS from the scheme; no SDK change). Floci lacks this API,
     // so the local branch above always uses node groups — serverless: true only changes aws.
     if (cfg.serverless) {
-      envVars[envKey('REDIS', name)] = await ensureServerlessCache(client, clusterId, name, tags)
-      continue
+      envVars[envKey("REDIS", name)] = await ensureServerlessCache(client, clusterId, name, tags);
+      continue;
     }
 
     // --- aws path (real ElastiCache; unchanged) ---
-    let endpoint = await describeEndpoint(client, clusterId)
+    let endpoint = await describeEndpoint(client, clusterId);
     if (!endpoint) {
       try {
-        const r = await client.send(new CreateReplicationGroupCommand(createInput))
-        endpoint = extractEndpoint(r.ReplicationGroup)
+        const r = await client.send(new CreateReplicationGroupCommand(createInput));
+        endpoint = extractEndpoint(r.ReplicationGroup);
       } catch (e: any) {
         // Already exists (prior deploy) — describe to recover its endpoint.
-        if (e.name !== 'ReplicationGroupAlreadyExistsFault') throw e
-        endpoint = await describeEndpoint(client, clusterId)
+        if (e.name !== "ReplicationGroupAlreadyExistsFault") throw e;
+        endpoint = await describeEndpoint(client, clusterId);
       }
     }
     // Real AWS provisions ElastiCache asynchronously (~5-10 min) — the endpoint isn't
     // populated until the group is `available`. Poll until it is.
     if (!endpoint) {
-      console.log(`  waiting for cache ${name} to become available (can take several minutes)...`)
-      endpoint = await waitForCacheEndpoint(client, clusterId)
+      console.log(`  waiting for cache ${name} to become available (can take several minutes)...`);
+      endpoint = await waitForCacheEndpoint(client, clusterId);
     }
-    envVars[envKey('REDIS', name)] = `redis://${endpoint.address}:${endpoint.port}`
+    envVars[envKey("REDIS", name)] = `redis://${endpoint.address}:${endpoint.port}`;
   }
-  return envVars
+  return envVars;
 }
 
 // ponytail: --target local only. Floci's ElastiCache API is unreliable in two ways this
@@ -102,25 +102,25 @@ async function ensureLocalCache(
   createInput: CreateReplicationGroupCommandInput,
 ): Promise<string> {
   const swallowExists = (e: any) => {
-    if (e?.name !== 'ReplicationGroupAlreadyExistsFault') throw e
-  }
+    if (e?.name !== "ReplicationGroupAlreadyExistsFault") throw e;
+  };
 
   // Register the group if Floci doesn't know it (idempotent).
   if (!(await describeEndpoint(client, clusterId))) {
-    await client.send(new CreateReplicationGroupCommand(createInput)).catch(swallowExists)
+    await client.send(new CreateReplicationGroupCommand(createInput)).catch(swallowExists);
   }
 
-  let ip = dockerContainerIp(clusterId)
+  let ip = dockerContainerIp(clusterId);
   if (!ip) {
     // Registry desync: group registered but its valkey container is gone. Force a clean
     // recreate so Floci respawns it.
     await client
       .send(new DeleteReplicationGroupCommand({ ReplicationGroupId: clusterId }))
-      .catch(() => {})
-    await client.send(new CreateReplicationGroupCommand(createInput)).catch(swallowExists)
-    ip = await waitForDockerIp(clusterId)
+      .catch(() => {});
+    await client.send(new CreateReplicationGroupCommand(createInput)).catch(swallowExists);
+    ip = await waitForDockerIp(clusterId);
   }
-  return ip
+  return ip;
 }
 
 // Read the valkey container's IP on Floci's docker network. undefined = container absent
@@ -128,35 +128,40 @@ async function ensureLocalCache(
 function dockerContainerIp(clusterId: string): string | undefined {
   try {
     const out = execFileSync(
-      'docker',
+      "docker",
       [
-        'inspect',
+        "inspect",
         `floci-valkey-${clusterId}`,
-        '--format',
-        '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}',
+        "--format",
+        "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
       ],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-    )
-    return out.trim().split(/\s+/).find((s) => s.length > 0) || undefined
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    return (
+      out
+        .trim()
+        .split(/\s+/)
+        .find((s) => s.length > 0) || undefined
+    );
   } catch {
-    return undefined
+    return undefined;
   }
 }
 
 // Poll for the valkey container to come up after a (re)create. Floci spawns it in a few
 // seconds locally, so a short poll suffices.
 async function waitForDockerIp(clusterId: string, maxMs = 30_000): Promise<string> {
-  const start = Date.now()
+  const start = Date.now();
   while (Date.now() - start < maxMs) {
-    const ip = dockerContainerIp(clusterId)
-    if (ip) return ip
-    await new Promise((r) => setTimeout(r, 1_000))
+    const ip = dockerContainerIp(clusterId);
+    if (ip) return ip;
+    await new Promise((r) => setTimeout(r, 1_000));
   }
   throw new Error(
     `caches: valkey container floci-valkey-${clusterId} never came up (${Math.round(
       maxMs / 1000,
     )}s). Is Floci running?`,
-  )
+  );
 }
 
 // Poll DescribeReplicationGroups until the endpoint is populated (group `available`),
@@ -167,48 +172,48 @@ async function waitForCacheEndpoint(
   clusterId: string,
   maxMs = 900_000,
 ): Promise<{ address: string; port: number }> {
-  const start = Date.now()
-  let lastStatus = ''
+  const start = Date.now();
+  let lastStatus = "";
   while (Date.now() - start < maxMs) {
-    await new Promise((r) => setTimeout(r, 10_000))
+    await new Promise((r) => setTimeout(r, 10_000));
     const r = await client
       .send(new DescribeReplicationGroupsCommand({ ReplicationGroupId: clusterId }))
-      .catch(() => null)
-    const rg = r?.ReplicationGroups?.[0]
-    const status = rg?.Status ?? 'unknown'
-    const mins = Math.round((Date.now() - start) / 60_000)
+      .catch(() => null);
+    const rg = r?.ReplicationGroups?.[0];
+    const status = rg?.Status ?? "unknown";
+    const mins = Math.round((Date.now() - start) / 60_000);
     if (status !== lastStatus) {
-      console.log(`    ${clusterId}: ${status} (${mins}m elapsed)`)
-      lastStatus = status
+      console.log(`    ${clusterId}: ${status} (${mins}m elapsed)`);
+      lastStatus = status;
     }
-    const ep = rg ? extractEndpoint(rg) : undefined
-    if (ep) return ep
+    const ep = rg ? extractEndpoint(rg) : undefined;
+    if (ep) return ep;
   }
   throw new Error(
     `caches: ${clusterId} not available after ${Math.round(maxMs / 60_000)}m (last status: ${lastStatus}). ` +
       `ElastiCache can be slow; re-run deploy to resume, or check the AWS console.`,
-  )
+  );
 }
 
 async function describeEndpoint(client: ElastiCacheClient, clusterId: string) {
   const r = await client
     .send(new DescribeReplicationGroupsCommand({ ReplicationGroupId: clusterId }))
-    .catch(() => null)
-  return r?.ReplicationGroups?.[0] ? extractEndpoint(r.ReplicationGroups[0]) : undefined
+    .catch(() => null);
+  return r?.ReplicationGroups?.[0] ? extractEndpoint(r.ReplicationGroups[0]) : undefined;
 }
 
 function extractEndpoint(rg: any): { address: string; port: number } | undefined {
   // Floci exposes it as ConfigurationEndpoint; real AWS (non-cluster) uses the node
   // group's PrimaryEndpoint. Prefer whichever is present.
-  const ep = rg?.ConfigurationEndpoint ?? rg?.NodeGroups?.[0]?.PrimaryEndpoint
-  if (!ep?.Address || !ep.Port) return undefined
-  return { address: ep.Address, port: ep.Port }
+  const ep = rg?.ConfigurationEndpoint ?? rg?.NodeGroups?.[0]?.PrimaryEndpoint;
+  if (!ep?.Address || !ep.Port) return undefined;
+  return { address: ep.Address, port: ep.Port };
 }
 
 // aws-only serverless ElastiCache helpers (mirror the node-group describe/extract/wait above).
 // --target local never calls these (Floci lacks CreateServerlessCache); serverless caches run
 // as node groups locally, same as the default path.
-type CacheEndpoint = { address: string; port: number }
+type CacheEndpoint = { address: string; port: number };
 
 async function ensureServerlessCache(
   client: ElastiCacheClient,
@@ -216,30 +221,32 @@ async function ensureServerlessCache(
   logicalName: string,
   tags: Record<string, string>,
 ): Promise<string> {
-  let ep = await describeServerlessEndpoint(client, cacheName)
+  let ep = await describeServerlessEndpoint(client, cacheName);
   if (!ep) {
     try {
       const r = await client.send(
         new CreateServerlessCacheCommand({
           ServerlessCacheName: cacheName,
-          Engine: 'valkey',
+          Engine: "valkey",
           Tags: asTagArray(tags),
         }),
-      )
-      ep = extractServerlessEndpoint(r.ServerlessCache)
+      );
+      ep = extractServerlessEndpoint(r.ServerlessCache);
     } catch (e: any) {
       // Already exists (prior deploy) — describe to recover its endpoint.
-      if (e.name !== 'ServerlessCacheAlreadyExistsFault') throw e
-      ep = await describeServerlessEndpoint(client, cacheName)
+      if (e.name !== "ServerlessCacheAlreadyExistsFault") throw e;
+      ep = await describeServerlessEndpoint(client, cacheName);
     }
   }
   // Serverless provisions asynchronously (~minutes) — poll until the endpoint is populated.
   if (!ep) {
-    console.log(`  waiting for serverless cache ${logicalName} to become available (can take several minutes)...`)
-    ep = await waitForServerlessEndpoint(client, cacheName)
+    console.log(
+      `  waiting for serverless cache ${logicalName} to become available (can take several minutes)...`,
+    );
+    ep = await waitForServerlessEndpoint(client, cacheName);
   }
   // rediss:// — serverless is TLS-only; the plain redis:// the node path uses would be refused.
-  return `rediss://${ep.address}:${ep.port}`
+  return `rediss://${ep.address}:${ep.port}`;
 }
 
 async function describeServerlessEndpoint(
@@ -248,15 +255,15 @@ async function describeServerlessEndpoint(
 ): Promise<CacheEndpoint | undefined> {
   const r = await client
     .send(new DescribeServerlessCachesCommand({ ServerlessCacheName: cacheName }))
-    .catch(() => null)
-  const sc = r?.ServerlessCaches?.[0]
-  return sc ? extractServerlessEndpoint(sc) : undefined
+    .catch(() => null);
+  const sc = r?.ServerlessCaches?.[0];
+  return sc ? extractServerlessEndpoint(sc) : undefined;
 }
 
 function extractServerlessEndpoint(sc: any): CacheEndpoint | undefined {
-  const ep = sc?.Endpoint
-  if (!ep?.Address || !ep.Port) return undefined
-  return { address: ep.Address, port: ep.Port }
+  const ep = sc?.Endpoint;
+  if (!ep?.Address || !ep.Port) return undefined;
+  return { address: ep.Address, port: ep.Port };
 }
 
 async function waitForServerlessEndpoint(
@@ -264,24 +271,26 @@ async function waitForServerlessEndpoint(
   cacheName: string,
   maxMs = 900_000,
 ): Promise<CacheEndpoint> {
-  const start = Date.now()
-  let lastStatus = ''
+  const start = Date.now();
+  let lastStatus = "";
   while (Date.now() - start < maxMs) {
-    await new Promise((r) => setTimeout(r, 10_000))
+    await new Promise((r) => setTimeout(r, 10_000));
     const r = await client
       .send(new DescribeServerlessCachesCommand({ ServerlessCacheName: cacheName }))
-      .catch(() => null)
-    const sc = r?.ServerlessCaches?.[0]
-    const status = sc?.Status ?? 'unknown'
+      .catch(() => null);
+    const sc = r?.ServerlessCaches?.[0];
+    const status = sc?.Status ?? "unknown";
     if (status !== lastStatus) {
-      console.log(`    ${cacheName}: ${status} (${Math.round((Date.now() - start) / 60_000)}m elapsed)`)
-      lastStatus = status
+      console.log(
+        `    ${cacheName}: ${status} (${Math.round((Date.now() - start) / 60_000)}m elapsed)`,
+      );
+      lastStatus = status;
     }
-    const ep = sc ? extractServerlessEndpoint(sc) : undefined
-    if (ep) return ep
+    const ep = sc ? extractServerlessEndpoint(sc) : undefined;
+    if (ep) return ep;
   }
   throw new Error(
     `caches: ${cacheName} not available after ${Math.round(maxMs / 60_000)}m (last status: ${lastStatus}). ` +
       `Re-run deploy to resume.`,
-  )
+  );
 }

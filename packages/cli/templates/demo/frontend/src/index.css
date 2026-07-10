@@ -1,4 +1,20 @@
-body { margin: 0; font-family: system-ui, sans-serif; background: #101828; color: #f9fafb; }
-main { max-width: 720px; margin: 64px auto; padding: 24px; }
-input, button { font: inherit; margin: 8px; padding: 10px 12px; }
-a { color: #93c5fd; }
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #101828;
+  color: #f9fafb;
+}
+main {
+  max-width: 720px;
+  margin: 64px auto;
+  padding: 24px;
+}
+input,
+button {
+  font: inherit;
+  margin: 8px;
+  padding: 10px 12px;
+}
+a {
+  color: #93c5fd;
+}

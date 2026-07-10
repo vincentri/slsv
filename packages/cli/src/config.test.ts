@@ -1,19 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { rmSync, mkdirSync, writeFileSync } from 'fs'
-import path from 'path'
-import os from 'os'
-import { loadConfig, ConfigError } from './config.js'
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { rmSync, mkdirSync, writeFileSync } from "fs";
+import path from "path";
+import os from "os";
+import { loadConfig, ConfigError } from "./config.js";
 
 // Exercises the `stages:` overlay: deep-merge, scalar override, and null-removal trigger swap.
-describe('loadConfig stage overlay', () => {
-  let tmp: string
-  const write = (yml: string) => writeFileSync(path.join(tmp, 'slsv.yml'), yml)
+describe("loadConfig stage overlay", () => {
+  let tmp: string;
+  const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);
 
   beforeEach(() => {
-    tmp = path.join(os.tmpdir(), `slsv-cfg-${Math.random().toString(36).slice(2)}`)
-    mkdirSync(tmp, { recursive: true })
-  })
-  afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+    tmp = path.join(os.tmpdir(), `slsv-cfg-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmp, { recursive: true });
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
   const base = `
 app: shop
@@ -37,59 +37,59 @@ stages:
         event:
           pattern:
             source: ['orders']
-`
+`;
 
-  it('base (no stage block match) is unchanged', () => {
-    write(base)
-    const cfg = loadConfig(tmp, 'nonexistent')
-    expect(cfg.functions!.worker.timeout).toBe(30)
-    expect(cfg.functions!.worker.queue).toEqual({ name: 'jobs' })
-  })
+  it("base (no stage block match) is unchanged", () => {
+    write(base);
+    const cfg = loadConfig(tmp, "nonexistent");
+    expect(cfg.functions!.worker.timeout).toBe(30);
+    expect(cfg.functions!.worker.queue).toEqual({ name: "jobs" });
+  });
 
-  it('prod overlay overrides only the scalar it names', () => {
-    write(base)
-    const cfg = loadConfig(tmp, 'prod')
-    expect(cfg.functions!.worker.timeout).toBe(300)
-    expect(cfg.functions!.worker.queue).toEqual({ name: 'jobs' }) // untouched
-  })
+  it("prod overlay overrides only the scalar it names", () => {
+    write(base);
+    const cfg = loadConfig(tmp, "prod");
+    expect(cfg.functions!.worker.timeout).toBe(300);
+    expect(cfg.functions!.worker.queue).toEqual({ name: "jobs" }); // untouched
+  });
 
-  it('dev overlay swaps queue trigger for event via null-removal', () => {
-    write(base)
-    const cfg = loadConfig(tmp, 'dev')
-    expect(cfg.functions!.worker.queue).toBeUndefined() // removed by `queue: null`
-    expect(cfg.functions!.worker.event?.pattern).toEqual({ source: ['orders'] })
-    expect(cfg.functions!.worker.timeout).toBe(30) // inherited
-  })
+  it("dev overlay swaps queue trigger for event via null-removal", () => {
+    write(base);
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.functions!.worker.queue).toBeUndefined(); // removed by `queue: null`
+    expect(cfg.functions!.worker.event?.pattern).toEqual({ source: ["orders"] });
+    expect(cfg.functions!.worker.timeout).toBe(30); // inherited
+  });
 
-  it('the stages key never leaks into the validated config', () => {
-    write(base)
-    const cfg = loadConfig(tmp, 'prod') as Record<string, unknown>
-    expect(cfg.stages).toBeUndefined()
-  })
-})
+  it("the stages key never leaks into the validated config", () => {
+    write(base);
+    const cfg = loadConfig(tmp, "prod") as Record<string, unknown>;
+    expect(cfg.stages).toBeUndefined();
+  });
+});
 
-describe('bucket config', () => {
-  let tmp: string
-  const write = (yml: string) => writeFileSync(path.join(tmp, 'slsv.yml'), yml)
+describe("bucket config", () => {
+  let tmp: string;
+  const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);
   beforeEach(() => {
-    tmp = path.join(os.tmpdir(), `slsv-bucket-${Math.random().toString(36).slice(2)}`)
-    mkdirSync(tmp, { recursive: true })
-  })
-  afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+    tmp = path.join(os.tmpdir(), `slsv-bucket-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmp, { recursive: true });
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
-  it('accepts an empty bucket body (legacy `name: {}` shape)', () => {
-    write(`app: shop\nbuckets:\n  uploads: {}\n`)
-    const cfg = loadConfig(tmp, 'dev')
-    expect(cfg.buckets!.uploads).toEqual({})
-  })
+  it("accepts an empty bucket body (legacy `name: {}` shape)", () => {
+    write(`app: shop\nbuckets:\n  uploads: {}\n`);
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.buckets!.uploads).toEqual({});
+  });
 
-  it('accepts a bare bucket key (YAML null treated as {})', () => {
-    write(`app: shop\nbuckets:\n  uploads:\n`)
-    const cfg = loadConfig(tmp, 'dev')
-    expect(cfg.buckets!.uploads).toEqual({})
-  })
+  it("accepts a bare bucket key (YAML null treated as {})", () => {
+    write(`app: shop\nbuckets:\n  uploads:\n`);
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.buckets!.uploads).toEqual({});
+  });
 
-  it('stage overlay `buckets.<name>: null` still REMOVES the bucket (not silently coerced)', () => {
+  it("stage overlay `buckets.<name>: null` still REMOVES the bucket (not silently coerced)", () => {
     write(`
 app: shop
 buckets:
@@ -100,62 +100,62 @@ stages:
   prod:
     buckets:
       uploads: null
-`)
-    const cfg = loadConfig(tmp, 'prod')
-    expect(cfg.buckets!.uploads).toBeUndefined()
-    expect(cfg.buckets!.public).toEqual({ publicRead: true })
-  })
+`);
+    const cfg = loadConfig(tmp, "prod");
+    expect(cfg.buckets!.uploads).toBeUndefined();
+    expect(cfg.buckets!.public).toEqual({ publicRead: true });
+  });
 
-  it('accepts publicRead + cors', () => {
+  it("accepts publicRead + cors", () => {
     write(`
 app: shop
 buckets:
   public:
     publicRead: true
     cors: ['https://app.example.com']
-`)
-    const cfg = loadConfig(tmp, 'dev')
+`);
+    const cfg = loadConfig(tmp, "dev");
     expect(cfg.buckets!.public).toEqual({
       publicRead: true,
-      cors: ['https://app.example.com'],
-    })
-  })
+      cors: ["https://app.example.com"],
+    });
+  });
 
-  it('rejects unknown bucket properties', () => {
+  it("rejects unknown bucket properties", () => {
     write(`
 app: shop
 buckets:
   weird:
     publicRead: true
     versioning: true
-`)
-    expect(() => loadConfig(tmp, 'dev')).toThrow(/Invalid slsv\.yml/)
-    expect(() => loadConfig(tmp, 'dev')).toThrow(/versioning|publicRead/)
-  })
-})
+`);
+    expect(() => loadConfig(tmp, "dev")).toThrow(/Invalid slsv\.yml/);
+    expect(() => loadConfig(tmp, "dev")).toThrow(/versioning|publicRead/);
+  });
+});
 
-describe('loadConfig error UX', () => {
-  let tmp: string
-  const write = (yml: string) => writeFileSync(path.join(tmp, 'slsv.yml'), yml)
+describe("loadConfig error UX", () => {
+  let tmp: string;
+  const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);
 
   beforeEach(() => {
-    tmp = path.join(os.tmpdir(), `slsv-cfg-${Math.random().toString(36).slice(2)}`)
-    mkdirSync(tmp, { recursive: true })
-  })
-  afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+    tmp = path.join(os.tmpdir(), `slsv-cfg-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmp, { recursive: true });
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
-  it('missing file throws ConfigError naming the cwd', () => {
-    expect(() => loadConfig(tmp, 'dev')).toThrow(ConfigError)
-    expect(() => loadConfig(tmp, 'dev')).toThrow(/No slsv.yml found/)
-  })
+  it("missing file throws ConfigError naming the cwd", () => {
+    expect(() => loadConfig(tmp, "dev")).toThrow(ConfigError);
+    expect(() => loadConfig(tmp, "dev")).toThrow(/No slsv.yml found/);
+  });
 
-  it('invalid YAML throws ConfigError', () => {
-    write('app: shop\n  functions: [unclosed')
-    expect(() => loadConfig(tmp, 'dev')).toThrow(ConfigError)
-    expect(() => loadConfig(tmp, 'dev')).toThrow(/not valid YAML/)
-  })
+  it("invalid YAML throws ConfigError", () => {
+    write("app: shop\n  functions: [unclosed");
+    expect(() => loadConfig(tmp, "dev")).toThrow(ConfigError);
+    expect(() => loadConfig(tmp, "dev")).toThrow(/not valid YAML/);
+  });
 
-  it('schema violation throws ConfigError with path-prefixed lines, not a raw zod dump', () => {
+  it("schema violation throws ConfigError with path-prefixed lines, not a raw zod dump", () => {
     write(`
 app: shop
 functions:
@@ -163,17 +163,17 @@ functions:
     runtime: nodejs22
     handler: ./src/api.handler
     timeout: 9999
-`)
-    let err: unknown
+`);
+    let err: unknown;
     try {
-      loadConfig(tmp, 'dev')
+      loadConfig(tmp, "dev");
     } catch (e) {
-      err = e
+      err = e;
     }
-    expect(err).toBeInstanceOf(ConfigError)
-    const msg = (err as ConfigError).message
-    expect(msg).toMatch(/Invalid slsv\.yml/)
-    expect(msg).toMatch(/functions\.api\.timeout/) // path-prefixed
-    expect(msg).not.toMatch(/ZodError|\bat /) // no stack / zod class dump
-  })
-})
+    expect(err).toBeInstanceOf(ConfigError);
+    const msg = (err as ConfigError).message;
+    expect(msg).toMatch(/Invalid slsv\.yml/);
+    expect(msg).toMatch(/functions\.api\.timeout/); // path-prefixed
+    expect(msg).not.toMatch(/ZodError|\bat /); // no stack / zod class dump
+  });
+});

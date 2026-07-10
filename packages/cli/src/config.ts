@@ -1,15 +1,15 @@
-import { readFileSync, existsSync } from 'fs'
-import { parse } from 'yaml'
-import { z, ZodError } from 'zod'
-import path from 'path'
+import { readFileSync, existsSync } from "fs";
+import { parse } from "yaml";
+import { z, ZodError } from "zod";
+import path from "path";
 
 const HttpRoute = z.object({
   method: z.string(),
   path: z.string(),
-})
+});
 
 const FunctionConfig = z.object({
-  runtime: z.enum(['nodejs22']),
+  runtime: z.enum(["nodejs22"]),
   handler: z.string(),
   http: z.array(HttpRoute).optional(),
   queue: z.object({ name: z.string() }).optional(),
@@ -18,27 +18,27 @@ const FunctionConfig = z.object({
   timeout: z.number().int().min(1).max(900).optional(), // seconds (Lambda hard limit 900)
   memory: z.number().int().min(128).max(10240).optional(), // MB, 1MB steps
   environment: z.record(z.string()).optional(), // custom env vars (bindings still win)
-  architecture: z.enum(['x86_64', 'arm64']).optional(), // default arm64 (cheaper + faster)
+  architecture: z.enum(["x86_64", "arm64"]).optional(), // default arm64 (cheaper + faster)
   ephemeralStorage: z.number().int().min(512).max(10240).optional(), // /tmp size MB (default 512)
   tracing: z.boolean().optional(), // X-Ray active tracing
   reservedConcurrency: z.number().int().min(0).optional(), // cap concurrent executions
   provisionedConcurrency: z.number().int().min(1).optional(), // pre-warmed instances (aws only, via `live` alias)
-})
+});
 
 const QueueConfig = z.object({
-  type: z.enum(['sqs']),
+  type: z.enum(["sqs"]),
   fifo: z.boolean().optional(),
   visibilityTimeout: z.number().int().positive().max(43200).optional(),
   dlq: z.string().optional(),
-})
+});
 
 const KeyAttr = z.object({
   name: z.string(),
-  type: z.enum(['S', 'N', 'B']),
-})
+  type: z.enum(["S", "N", "B"]),
+});
 
 const DynamoDbConfig = z.object({
-  type: z.literal('dynamodb'),
+  type: z.literal("dynamodb"),
   partitionKey: KeyAttr,
   sortKey: KeyAttr.optional(),
   gsi: z
@@ -50,26 +50,26 @@ const DynamoDbConfig = z.object({
       }),
     )
     .optional(),
-})
+});
 
 const SqlConfig = z.object({
-  type: z.enum(['postgres', 'mysql']),
+  type: z.enum(["postgres", "mysql"]),
   name: z.string().optional(), // actual DB name for local container; defaults to logical key
   init_sql: z.string().optional(), // path to SQL file run once on local container init
   instanceClass: z.string().optional(), // RDS instance class, default 'db.t3.micro'
   storage: z.number().int().min(20).max(65536).optional(), // GB, default 20
   multiAz: z.boolean().optional(), // default false
   skipFinalSnapshot: z.boolean().optional(), // on destroy: skip final snapshot (default true)
-})
+});
 
-const DatabaseConfig = z.discriminatedUnion('type', [DynamoDbConfig, SqlConfig])
+const DatabaseConfig = z.discriminatedUnion("type", [DynamoDbConfig, SqlConfig]);
 
 const CacheConfig = z.object({
-  type: z.enum(['redis', 'valkey']),
+  type: z.enum(["redis", "valkey"]),
   nodeType: z.string().optional(), // ElastiCache node type, default 'cache.t3.micro'
   nodes: z.number().int().min(1).max(5).optional(), // NumCacheNodes, default 1
   serverless: z.boolean().optional(), // --target aws only: CreateServerlessCache (auto-scale, TLS-only) instead of node group; ignored locally
-})
+});
 
 const FrontendConfig = z.object({
   src: z.string(),
@@ -77,7 +77,7 @@ const FrontendConfig = z.object({
   // Serve the frontend + /api/* through one HTTPS CloudFront domain instead of the
   // HTTP-only S3 website endpoint. aws-only; ~15-20 min to deploy/destroy. Default false.
   cloudfront: z.boolean().optional(),
-})
+});
 
 const BucketConfig = z
   .object({
@@ -90,14 +90,14 @@ const BucketConfig = z
     // never with private buckets.
     cors: z.array(z.string()).optional(),
   })
-  .strict()
+  .strict();
 
 const ApiConfig = z.object({
   // Origins allowed to call the HTTP API from a browser (CORS AllowOrigins). Omit → '*' (open,
   // today's default — needed for the S3-hosted frontend on a different origin). Set to your
   // site(s) to lock it down, e.g. ['https://myapp.com']. Methods/headers stay '*'.
   cors: z.array(z.string()).optional(),
-})
+});
 
 const AppConfig = z.object({
   app: z.string(),
@@ -119,71 +119,76 @@ const AppConfig = z.object({
   // CloudWatch accepts, else the log group would reject the retention policy.
   logRetentionDays: z
     .union(
-      [0, 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653].map(
-        (n) => z.literal(n),
-      ) as [z.ZodLiteral<number>, z.ZodLiteral<number>, ...z.ZodLiteral<number>[]],
+      [
+        0, 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557,
+        2922, 3288, 3653,
+      ].map((n) => z.literal(n)) as [
+        z.ZodLiteral<number>,
+        z.ZodLiteral<number>,
+        ...z.ZodLiteral<number>[],
+      ],
     )
     .optional(),
-})
+});
 
-export type AppConfig = z.infer<typeof AppConfig>
-export type DynamoDbDef = z.infer<typeof DynamoDbConfig>
-export type FrontendDef = z.infer<typeof FrontendConfig>
+export type AppConfig = z.infer<typeof AppConfig>;
+export type DynamoDbDef = z.infer<typeof DynamoDbConfig>;
+export type FrontendDef = z.infer<typeof FrontendConfig>;
 
 // Deep-merge an overlay onto a base: objects merge recursively, arrays/scalars replace,
 // and an explicit `null` in the overlay removes the key (needed to swap e.g. a queue
 // trigger for an event trigger between stages).
 function deepMerge(base: any, over: any): any {
-  if (over === null || typeof over !== 'object' || Array.isArray(over)) return over
-  if (base === null || typeof base !== 'object' || Array.isArray(base)) return { ...over }
-  const out: any = { ...base }
+  if (over === null || typeof over !== "object" || Array.isArray(over)) return over;
+  if (base === null || typeof base !== "object" || Array.isArray(base)) return { ...over };
+  const out: any = { ...base };
   for (const [k, v] of Object.entries(over)) {
-    if (v === null) delete out[k]
-    else out[k] = k in base ? deepMerge(base[k], v) : v
+    if (v === null) delete out[k];
+    else out[k] = k in base ? deepMerge(base[k], v) : v;
   }
-  return out
+  return out;
 }
 
-export function loadConfig(cwd: string = process.cwd(), stage = 'dev'): AppConfig {
-  const cfgPath = path.join(cwd, 'slsv.yml')
+export function loadConfig(cwd: string = process.cwd(), stage = "dev"): AppConfig {
+  const cfgPath = path.join(cwd, "slsv.yml");
   if (!existsSync(cfgPath)) {
-    throw new ConfigError(`No slsv.yml found in ${cwd}`)
+    throw new ConfigError(`No slsv.yml found in ${cwd}`);
   }
-  const raw = readFileSync(cfgPath, 'utf-8')
-  let parsed: Record<string, any>
+  const raw = readFileSync(cfgPath, "utf-8");
+  let parsed: Record<string, any>;
   try {
-    parsed = (parse(raw) ?? {}) as Record<string, any>
+    parsed = (parse(raw) ?? {}) as Record<string, any>;
   } catch (e: any) {
     // yaml lib embeds line/column in the message already.
-    throw new ConfigError(`slsv.yml is not valid YAML:\n  ${e.message}`)
+    throw new ConfigError(`slsv.yml is not valid YAML:\n  ${e.message}`);
   }
   // `stages.<stage>` overlays the base config; the `stages` key itself is dropped before
   // validation (zod strips it anyway, but be explicit) and the merged result is validated.
-  const { stages, ...base } = parsed
-  const overlay = stages?.[stage]
-  const merged = overlay ? deepMerge(base, overlay) : base
+  const { stages, ...base } = parsed;
+  const overlay = stages?.[stage];
+  const merged = overlay ? deepMerge(base, overlay) : base;
   // Allow bare `uploads:` (YAML null) to mean `uploads: {}`. Stage overlays still use
   // `uploads: null` to REMOVE a bucket — deepMerge runs first, so the key is already
   // gone by the time we normalize here.
-  if (merged.buckets && typeof merged.buckets === 'object') {
+  if (merged.buckets && typeof merged.buckets === "object") {
     for (const [k, v] of Object.entries(merged.buckets)) {
-      if (v === null) merged.buckets[k] = {}
+      if (v === null) merged.buckets[k] = {};
     }
   }
   try {
-    return AppConfig.parse(merged)
+    return AppConfig.parse(merged);
   } catch (e) {
     if (e instanceof ZodError) {
       // ponytail: zod's default messages are generic ("Expected number", "Invalid enum
       // value"). Path prefix tells WHERE; message tells WHAT. For truly bespoke copy
       // ("timeout must be ≤ 900"), override per-rule via zod's `{ message: ... }` arg.
       const lines = e.issues.map((i) => {
-        const p = i.path.length ? i.path.join('.') : '(root)'
-        return `  ${p}: ${i.message}`
-      })
-      throw new ConfigError(`Invalid slsv.yml:\n${lines.join('\n')}`)
+        const p = i.path.length ? i.path.join(".") : "(root)";
+        return `  ${p}: ${i.message}`;
+      });
+      throw new ConfigError(`Invalid slsv.yml:\n${lines.join("\n")}`);
     }
-    throw e
+    throw e;
   }
 }
 
@@ -191,7 +196,7 @@ export function loadConfig(cwd: string = process.cwd(), stage = 'dev'): AppConfi
 // a stack trace; other thrown errors surface normally (genuine bugs).
 export class ConfigError extends Error {
   constructor(message: string) {
-    super(message)
-    this.name = 'ConfigError'
+    super(message);
+    this.name = "ConfigError";
   }
 }

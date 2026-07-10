@@ -23,7 +23,7 @@ functions:
     # tracing: true                    # X-Ray active tracing
     # reservedConcurrency: 10          # cap concurrent executions (0 = throttle all)
     # provisionedConcurrency: 2        # warm instances, no cold start (--target aws only).
-                                       # Publishes a version + `live` alias; costs $ 24/7.
+    # Publishes a version + `live` alias; costs $ 24/7.
     # environment:                     # custom env vars (slsv bindings always win)
     #   LOG_LEVEL: debug
 
@@ -35,15 +35,15 @@ functions:
   cron:
     runtime: nodejs22
     handler: ./src/cron.handler
-    cron: { schedule: '0 8 * * *' } # EventBridge — 5-field unix cron OR rate()
+    cron: { schedule: "0 8 * * *" } # EventBridge — 5-field unix cron OR rate()
 
   onOrder:
     runtime: nodejs22
     handler: ./src/on-order.handler
     event: # EventBridge event-pattern — invoked when a matching event hits the default bus
       pattern:
-        source: ['orders']
-        detail-type: ['order.placed']
+        source: ["orders"]
+        detail-type: ["order.placed"]
 
 api: # optional — HTTP API Gateway settings
   # Origins allowed to call the API from a browser (CORS AllowOrigins). Omit this whole block
@@ -69,7 +69,7 @@ queues:
   #   fifo: true
 
 buckets:
-  private: {}                                  # only Lambda reads/writes
+  private: {} # only Lambda reads/writes
   # public:                                     # browser reads objects via the bucket URL
   #   publicRead: true                          # → s3:GetObject policy + access blocks off
   # uploads:                                    # browser uploads via presigned PUT
@@ -95,7 +95,7 @@ databases:
     # storage: 20                      # GB (--target aws only; default 20, max 65536)
     # multiAz: false                   # (--target aws only)
     # skipFinalSnapshot: true          # destroy takes NO final snapshot (default true).
-                                       # false → destroy saves a timestamped snapshot first.
+    # false → destroy saves a timestamped snapshot first.
 
   # replica:
   #   type: mysql
@@ -114,7 +114,7 @@ databases:
 
 caches:
   session:
-    type: valkey                      # `type: redis` is an alias — same backend
+    type: valkey # `type: redis` is an alias — same backend
     # nodeType: cache.t4g.micro        # ElastiCache node type (--target aws only; default t4g.micro)
     # nodes: 1                         # NumCacheNodes (--target aws only; 1-5)
 
@@ -138,16 +138,16 @@ tags:
   CostCenter: eng-42
 
 # logRetentionDays: 14   # CloudWatch log retention for all functions (default 14; 0 = never
-                         # expire). Must be a CloudWatch value: 1,3,5,7,14,30,60,90,...,3653.
+# expire). Must be a CloudWatch value: 1,3,5,7,14,30,60,90,...,3653.
 
 frontend:
-  src: ./frontend/dist                # build output to serve
+  src: ./frontend/dist # build output to serve
   build: npm --prefix frontend install && npm --prefix frontend run build # build cmd
   # cloudfront: true                  # aws-only. Serves the frontend + /api/* under one
-                                       # HTTPS *.cloudfront.net domain (S3 website endpoints
-                                       # are HTTP-only). Skips the VITE_SLSV_API_URL injection
-                                       # so /api calls stay relative (same-origin). Deploy and
-                                       # destroy each take ~15-20 min (CloudFront propagation).
+  # HTTPS *.cloudfront.net domain (S3 website endpoints
+  # are HTTP-only). Skips the VITE_SLSV_API_URL injection
+  # so /api calls stay relative (same-origin). Deploy and
+  # destroy each take ~15-20 min (CloudFront propagation).
 
 # ── Per-stage overrides (optional) ──────────────────────────────────────────
 # `stages.<name>` deep-merges over the base above for `--stage <name>`. Override ONLY

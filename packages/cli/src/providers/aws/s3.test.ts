@@ -1,42 +1,42 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from "vitest";
 
 // Mock the S3 client so the test never touches AWS/Floci.
-const send = vi.fn()
-vi.mock('@aws-sdk/client-s3', () => ({
+const send = vi.fn();
+vi.mock("@aws-sdk/client-s3", () => ({
   S3Client: vi.fn(() => ({ send })),
-  CreateBucketCommand: vi.fn((i) => ({ __cmd: 'CreateBucket', ...i })),
-  HeadBucketCommand: vi.fn((i) => ({ __cmd: 'HeadBucket', ...i })),
-  PutBucketTaggingCommand: vi.fn((i) => ({ __cmd: 'PutBucketTagging', ...i })),
-  PutPublicAccessBlockCommand: vi.fn((i) => ({ __cmd: 'PutPublicAccessBlock', ...i })),
-  PutBucketPolicyCommand: vi.fn((i) => ({ __cmd: 'PutBucketPolicy', ...i })),
-  PutBucketCorsCommand: vi.fn((i) => ({ __cmd: 'PutBucketCors', ...i })),
-}))
+  CreateBucketCommand: vi.fn((i) => ({ __cmd: "CreateBucket", ...i })),
+  HeadBucketCommand: vi.fn((i) => ({ __cmd: "HeadBucket", ...i })),
+  PutBucketTaggingCommand: vi.fn((i) => ({ __cmd: "PutBucketTagging", ...i })),
+  PutPublicAccessBlockCommand: vi.fn((i) => ({ __cmd: "PutPublicAccessBlock", ...i })),
+  PutBucketPolicyCommand: vi.fn((i) => ({ __cmd: "PutBucketPolicy", ...i })),
+  PutBucketCorsCommand: vi.fn((i) => ({ __cmd: "PutBucketCors", ...i })),
+}));
 
-import { ensureBuckets } from './s3.js'
+import { ensureBuckets } from "./s3.js";
 
-const S3 = { send } as any // vi.fn mock object — ensureBuckets' S3Client param is unused
+const S3 = { send } as any; // vi.fn mock object — ensureBuckets' S3Client param is unused
 
-describe('ensureBuckets', () => {
-  it('creates + tags a default bucket with no extra policy calls', async () => {
-    send.mockReset()
-    send.mockResolvedValue({})
+describe("ensureBuckets", () => {
+  it("creates + tags a default bucket with no extra policy calls", async () => {
+    send.mockReset();
+    send.mockResolvedValue({});
 
-    await ensureBuckets(S3, { uploads: {} }, 'shop-dev', {})
+    await ensureBuckets(S3, { uploads: {} }, "shop-dev", {});
 
-    expect(send).toHaveBeenCalledWith({ __cmd: 'HeadBucket', Bucket: 'shop-dev-uploads' })
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ Tagging: { TagSet: [] } }))
+    expect(send).toHaveBeenCalledWith({ __cmd: "HeadBucket", Bucket: "shop-dev-uploads" });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ Tagging: { TagSet: [] } }));
     // No policy / cors / publicAccessBlock when publicRead + cors are both unset
-    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ Policy: expect.anything() }))
+    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ Policy: expect.anything() }));
     expect(send).not.toHaveBeenCalledWith(
       expect.objectContaining({ CORSConfiguration: expect.anything() }),
-    )
-  })
+    );
+  });
 
-  it('applies publicRead policy + disables access blocks', async () => {
-    send.mockReset()
-    send.mockResolvedValue({})
+  it("applies publicRead policy + disables access blocks", async () => {
+    send.mockReset();
+    send.mockResolvedValue({});
 
-    await ensureBuckets(S3, { public: { publicRead: true } }, 'shop-dev', {})
+    await ensureBuckets(S3, { public: { publicRead: true } }, "shop-dev", {});
 
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -47,74 +47,69 @@ describe('ensureBuckets', () => {
           RestrictPublicBuckets: false,
         },
       }),
-    )
+    );
     const policyCall = send.mock.calls.find(
-      ([c]) => typeof c?.Policy === 'string' && c.Policy.includes('s3:GetObject'),
-    )
-    expect(policyCall).toBeTruthy()
-    const policy = JSON.parse(policyCall![0].Policy)
+      ([c]) => typeof c?.Policy === "string" && c.Policy.includes("s3:GetObject"),
+    );
+    expect(policyCall).toBeTruthy();
+    const policy = JSON.parse(policyCall![0].Policy);
     expect(policy.Statement[0]).toMatchObject({
-      Effect: 'Allow',
-      Principal: '*',
-      Action: 's3:GetObject',
-      Resource: 'arn:aws:s3:::shop-dev-public/*',
-    })
-  })
+      Effect: "Allow",
+      Principal: "*",
+      Action: "s3:GetObject",
+      Resource: "arn:aws:s3:::shop-dev-public/*",
+    });
+  });
 
-  it('applies CORS rule when origins are configured', async () => {
-    send.mockReset()
-    send.mockResolvedValue({})
+  it("applies CORS rule when origins are configured", async () => {
+    send.mockReset();
+    send.mockResolvedValue({});
 
-    await ensureBuckets(
-      S3,
-      { uploads: { cors: ['https://app.example.com'] } },
-      'shop-dev',
-      {},
-    )
+    await ensureBuckets(S3, { uploads: { cors: ["https://app.example.com"] } }, "shop-dev", {});
 
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
         CORSConfiguration: {
           CORSRules: [
             expect.objectContaining({
-              AllowedOrigins: ['https://app.example.com'],
-              AllowedMethods: expect.arrayContaining(['GET', 'PUT', 'POST', 'HEAD']),
+              AllowedOrigins: ["https://app.example.com"],
+              AllowedMethods: expect.arrayContaining(["GET", "PUT", "POST", "HEAD"]),
             }),
           ],
         },
       }),
-    )
-  })
+    );
+  });
 
-  it('skips public policy and CORS for default bucket even with no flags', async () => {
-    send.mockReset()
-    send.mockResolvedValue({})
+  it("skips public policy and CORS for default bucket even with no flags", async () => {
+    send.mockReset();
+    send.mockResolvedValue({});
 
-    await ensureBuckets(S3, { private: {} }, 'shop-dev', {})
+    await ensureBuckets(S3, { private: {} }, "shop-dev", {});
 
-    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ Policy: expect.anything() }))
+    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ Policy: expect.anything() }));
     expect(send).not.toHaveBeenCalledWith(
       expect.objectContaining({ CORSConfiguration: expect.anything() }),
-    )
-  })
+    );
+  });
 
-  it('skips CreateBucket when HeadBucket succeeds (bucket already exists)', async () => {
-    send.mockReset()
-    send.mockResolvedValue({})
+  it("skips CreateBucket when HeadBucket succeeds (bucket already exists)", async () => {
+    send.mockReset();
+    send.mockResolvedValue({});
 
-    await ensureBuckets(S3, { uploads: {} }, 'shop-dev', {})
+    await ensureBuckets(S3, { uploads: {} }, "shop-dev", {});
 
-    const createCalls = send.mock.calls.filter(([c]) => c?.__cmd === 'CreateBucket')
-    expect(createCalls).toHaveLength(0)
-  })
+    const createCalls = send.mock.calls.filter(([c]) => c?.__cmd === "CreateBucket");
+    expect(createCalls).toHaveLength(0);
+  });
 
-  it('creates bucket when HeadBucket throws (bucket does not exist)', async () => {
-    send.mockReset()
-    send.mockRejectedValueOnce({ name: 'NotFound' }).mockResolvedValue({})
+  it("creates bucket when HeadBucket throws (bucket does not exist)", async () => {
+    send.mockReset();
+    send.mockRejectedValueOnce({ name: "NotFound" }).mockResolvedValue({});
 
-    await ensureBuckets(S3, { uploads: {} }, 'shop-dev', {})
+    await ensureBuckets(S3, { uploads: {} }, "shop-dev", {});
 
-    const createCalls = send.mock.calls.filter(([c]) => c?.__cmd === 'CreateBucket')
-    expect(createCalls).toEqual([[{ __cmd: 'CreateBucket', Bucket: 'shop-dev-uploads' }]])
-  })
-})
+    const createCalls = send.mock.calls.filter(([c]) => c?.__cmd === "CreateBucket");
+    expect(createCalls).toEqual([[{ __cmd: "CreateBucket", Bucket: "shop-dev-uploads" }]]);
+  });
+});

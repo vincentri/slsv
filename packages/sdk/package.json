@@ -1,13 +1,16 @@
 {
   "name": "@slsv/sdk",
   "version": "0.0.1",
-  "description": "Cloud-agnostic SDK for slsv apps \u2014 write once, run on any cloud",
+  "description": "Cloud-agnostic SDK for slsv apps — write once, run on any cloud",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vincentri/slsv.git",
     "directory": "packages/sdk"
   },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,19 +20,15 @@
       "import": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc --emitDeclarationOnly",
     "test": "vitest run",
     "lint": "tsc --noEmit",
-    "lint:eslint": "eslint src --ext .ts",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check ."
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.0.0",
@@ -38,16 +37,16 @@
     "@aws-sdk/client-sqs": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
     "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "drizzle-orm": "^0.36.0",
     "ioredis": "^5.11.1",
     "mysql2": "^3.11.0",
-    "pg": "^8.13.0",
-    "drizzle-orm": "^0.36.0"
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/pg": "^8.11.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.4.0",
+    "typescript": "^7.0.0",
     "vitest": "^1.4.0"
   }
 }

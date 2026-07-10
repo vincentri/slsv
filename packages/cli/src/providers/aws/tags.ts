@@ -7,12 +7,12 @@ export function slsvTags(
 ): Record<string, string> {
   return {
     ...custom,
-    'slsv:managed-by': 'slsv',
-    'slsv:app': app,
-    'slsv:stage': stage,
-  }
+    "slsv:managed-by": "slsv",
+    "slsv:app": app,
+    "slsv:stage": stage,
+  };
 }
 
 // Most AWS APIs want [{Key,Value}]; Lambda/SQS want the plain {k:v} map (use the Record directly).
 export const asTagArray = (tags: Record<string, string>) =>
-  Object.entries(tags).map(([Key, Value]) => ({ Key, Value }))
+  Object.entries(tags).map(([Key, Value]) => ({ Key, Value }));

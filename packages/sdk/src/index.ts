@@ -1,10 +1,10 @@
-import { resolve } from './resolve.js'
-import { makeDb } from './providers/aws/db.js'
-import { makeQueue } from './providers/aws/queue.js'
-import { makeStorage } from './providers/aws/storage.js'
-import { makeCache } from './providers/aws/cache.js'
-import { getSecret } from './providers/aws/secret.js'
-import { makeSql } from './providers/aws/sql.js'
+import { resolve } from "./resolve.js";
+import { makeDb } from "./providers/aws/db.js";
+import { makeQueue } from "./providers/aws/queue.js";
+import { makeStorage } from "./providers/aws/storage.js";
+import { makeCache } from "./providers/aws/cache.js";
+import { getSecret } from "./providers/aws/secret.js";
+import { makeSql } from "./providers/aws/sql.js";
 
 export {
   json,
@@ -16,7 +16,7 @@ export {
   type LambdaEvent,
   type Middleware,
   type Route,
-} from './api.js'
+} from "./api.js";
 
 export type {
   DbClient,
@@ -27,26 +27,26 @@ export type {
   Key,
   QueryOptions,
   ReceivedMessage,
-} from './types.js'
+} from "./types.js";
 
 /** DynamoDB table by logical name from slsv.yml */
 export function db(name: string) {
-  return makeDb(resolve('DATABASE', name))
+  return makeDb(resolve("DATABASE", name));
 }
 
 /** SQS queue by logical name from slsv.yml */
 export function queue(name: string) {
-  return makeQueue(resolve('QUEUE', name))
+  return makeQueue(resolve("QUEUE", name));
 }
 
 /** S3 bucket by logical name from slsv.yml */
 export function storage(name: string) {
-  return makeStorage(resolve('BUCKET', name))
+  return makeStorage(resolve("BUCKET", name));
 }
 
 /** Redis cache by logical name from slsv.yml */
 export function cache(name: string) {
-  return makeCache(resolve('REDIS', name))
+  return makeCache(resolve("REDIS", name));
 }
 
 /**
@@ -54,7 +54,7 @@ export function cache(name: string) {
  * Fetched at runtime (never baked into the function env) and cached per container.
  */
 export function secret(name: string) {
-  return getSecret(resolve('SECRET', name))
+  return getSecret(resolve("SECRET", name));
 }
 
 /**
@@ -66,7 +66,7 @@ export function sql<TSchema extends Record<string, unknown> = Record<string, nev
   name: string,
   opts: { schema?: TSchema } = {},
 ) {
-  return makeSql(resolve('DATABASE', name), opts)
+  return makeSql(resolve("DATABASE", name), opts);
 }
 
 // Drizzle schema builders + raw-SQL tag, re-exported so handlers never import `drizzle-orm`
@@ -74,8 +74,8 @@ export function sql<TSchema extends Record<string, unknown> = Record<string, nev
 // schema you build with these is type-compatible with the client `sql()` returns (avoids the
 // dual-package hazard when @slsv/sdk is a file: link). pg-core and mysql-core share column
 // names, so they're namespaced.
-export * as pgCore from 'drizzle-orm/pg-core'
-export * as mysqlCore from 'drizzle-orm/mysql-core'
+export * as pgCore from "drizzle-orm/pg-core";
+export * as mysqlCore from "drizzle-orm/mysql-core";
 // drizzle's `sql` template for raw fragments — renamed to avoid colliding with slsv's sql().
-export { sql as sqlExpr } from 'drizzle-orm'
-export type { SqlClient } from './providers/aws/sql.js'
+export { sql as sqlExpr } from "drizzle-orm";
+export type { SqlClient } from "./providers/aws/sql.js";
