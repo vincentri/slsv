@@ -9,7 +9,7 @@ const HttpRoute = z.object({
 });
 
 const FunctionConfig = z.object({
-  runtime: z.enum(["nodejs22"]),
+  runtime: z.enum(["nodejs22", "nodejs24"]),
   handler: z.string(),
   http: z.array(HttpRoute).optional(),
   queue: z.object({ name: z.string() }).optional(),

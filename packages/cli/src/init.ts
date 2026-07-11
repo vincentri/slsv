@@ -20,6 +20,7 @@ export function initScaffold(
 
   if (template === "api-db") {
     scaffoldApiDb(dir, name);
+    writeFileSync(path.join(dir, "AGENTS.md"), agentsMd());
     return;
   }
 
@@ -65,6 +66,7 @@ export function initScaffold(
   } else {
     copyDemoTemplate(dir, name);
   }
+  writeFileSync(path.join(dir, "AGENTS.md"), agentsMd());
 }
 
 function copyDemoTemplate(dir: string, name: string) {
@@ -131,6 +133,13 @@ function demoTemplateDir() {
   if (!existsSync(dir))
     throw new Error("Demo template not found. Run from repo or build templates.");
   return dir;
+}
+
+// The scaffold-time AGENTS.md — single source is templates/demo/AGENTS.md (also shipped in the
+// demo via cpSync). Read lazily so the generated templates (minimal, api-db) get the same doc
+// with no duplicated copy to drift.
+function agentsMd(): string {
+  return readFileSync(path.join(demoTemplateDir(), "AGENTS.md"), "utf-8");
 }
 
 function replaceInFile(file: string, search: RegExp, replacement: string) {

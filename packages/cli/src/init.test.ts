@@ -38,6 +38,15 @@ describe("initScaffold", () => {
     expect(existsSync(path.join(app, "frontend"))).toBe(false);
   });
 
+  it("ships AGENTS.md in every template", () => {
+    for (const t of ["minimal", "demo", "api-db"] as const) {
+      initScaffold(t, tmp, t, "backend");
+      const doc = readFileSync(path.join(tmp, t, "AGENTS.md"), "utf-8");
+      expect(doc).toMatch(/how this app works \(slsv\)/);
+      expect(doc).toMatch(/@slsv\/sdk/);
+    }
+  });
+
   it("writes slsv.yml for frontend stack without functions", () => {
     initScaffold("fe", tmp, "minimal", "frontend");
     const yml = readFileSync(path.join(tmp, "fe", "slsv.yml"), "utf-8");

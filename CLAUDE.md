@@ -421,7 +421,7 @@ PutEvents via SDK/CLI onto the default bus.
 app: my-app
 functions:
   api:
-    runtime: nodejs20 # only runtime in phase 1
+    runtime: nodejs22 # nodejs22 | nodejs24 — honored (maps to `<runtime>.x`); platform (AWS/Floci) must support it
     handler: ./src/api.handler # file.export
     http: [{ method, path }] # OR queue: { name } OR cron: { schedule } OR event: { pattern }
     timeout?: 30 # secs, 1-900 (default 30)

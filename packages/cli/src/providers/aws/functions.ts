@@ -112,7 +112,7 @@ export async function deployFunctions(
       if (e.name !== "ResourceNotFoundException") throw e;
       const create = new CreateFunctionCommand({
         FunctionName: fnName,
-        Runtime: "nodejs22.x",
+        Runtime: `${fn.runtime}.x`, // honor the yml `runtime` (was hardcoded nodejs22.x, ignoring the field)
         Role: roleArn,
         Handler: handlerRef,
         Code: { ZipFile: zip },
