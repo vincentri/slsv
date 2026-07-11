@@ -7,9 +7,9 @@ const { send, getSignedUrl } = vi.hoisted(() => ({
   getSignedUrl: vi.fn(),
 }));
 vi.mock("@aws-sdk/client-s3", () => ({
-  S3Client: vi.fn(() => ({ send })),
-  PutObjectCommand: vi.fn((i) => i),
-  GetObjectCommand: vi.fn((i) => i),
+  S3Client: vi.fn(function () { return { send }; }),
+  PutObjectCommand: vi.fn(function (i) { return i; }),
+  GetObjectCommand: vi.fn(function (i) { return i; }),
 }));
 vi.mock("@aws-sdk/s3-request-presigner", () => ({ getSignedUrl }));
 

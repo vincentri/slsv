@@ -10,6 +10,7 @@ import { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { IAMClient } from "@aws-sdk/client-iam";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
+import { ACMClient } from "@aws-sdk/client-acm";
 
 const LOCAL_CFG = {
   endpoint: "http://localhost:4566",
@@ -33,6 +34,9 @@ export function makeClients(target: "local" | "aws" = "local") {
     secrets: new SecretsManagerClient(cfg),
     iam: new IAMClient(cfg),
     logs: new CloudWatchLogsClient(cfg),
+    // ACM cert for an API Gateway custom domain must be in the API's own region (regional
+    // endpoint) — so this tracks `cfg`'s region, unlike CloudFront's forced us-east-1.
+    acm: new ACMClient(cfg),
     // CloudFront is a global service reachable only via its us-east-1 endpoint.
     cloudfront: new CloudFrontClient(target === "local" ? LOCAL_CFG : { region: "us-east-1" }),
   };

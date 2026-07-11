@@ -15,6 +15,7 @@ export {
   put,
   patch,
   del,
+  group,
   type ApiHandler,
   type ApiRequest,
   type ApiResponse,

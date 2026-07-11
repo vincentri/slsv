@@ -68,6 +68,22 @@ stages:
   });
 });
 
+describe("api custom domain config", () => {
+  let tmp: string;
+  const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);
+  beforeEach(() => {
+    tmp = path.join(os.tmpdir(), `slsv-apidomain-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmp, { recursive: true });
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it("accepts a bare domain (zone auto-derived, token from env)", () => {
+    write(`app: shop\napi:\n  domain: api.myapp.com\n`);
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.api!.domain).toBe("api.myapp.com");
+  });
+});
+
 describe("bucket config", () => {
   let tmp: string;
   const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);

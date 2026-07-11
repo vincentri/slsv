@@ -4,8 +4,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // vi.hoisted: vi.mock is hoisted above normal consts, so `send` must be too.
 const { send } = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("@aws-sdk/client-secrets-manager", () => ({
-  SecretsManagerClient: vi.fn(() => ({ send })),
-  GetSecretValueCommand: vi.fn((input) => input),
+  SecretsManagerClient: vi.fn(function () { return { send }; }),
+  GetSecretValueCommand: vi.fn(function (input) { return input; }),
 }));
 
 import { getSecret } from "./secret.js";

@@ -73,7 +73,7 @@ export async function deployFunctions(
     const fnName = `${appName}-${name}`;
     console.log(`  Deploying function: ${fnName}`);
 
-    const { zip, handlerRef } = await bundleHandler(fn.handler, cwd);
+    const { zip, handlerRef } = await bundleHandler(fn.handler, cwd, !!fn.http);
     const overrides: Record<string, string> = {};
     // ponytail: only inject AWS_ENDPOINT_URL locally; real AWS uses default endpoint resolution
     if (opts.localEndpoint) overrides.AWS_ENDPOINT_URL = opts.localEndpoint;

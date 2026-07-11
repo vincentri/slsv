@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 // Mock drivers + drizzle so the test never opens a real pool or touches a DB.
 // Each drizzle adapter returns a tagged sentinel carrying the pool, so we can assert which
 // dialect makeSql picked from the connection-string scheme.
-vi.mock("pg", () => ({ default: { Pool: vi.fn((cfg) => ({ pg: cfg })) } }));
+vi.mock("pg", () => ({ default: { Pool: vi.fn(function (cfg) { return { pg: cfg }; }) } }));
 vi.mock("mysql2/promise", () => ({ default: { createPool: vi.fn((s) => ({ mysql: s })) } }));
 vi.mock("drizzle-orm/node-postgres", () => ({
   drizzle: vi.fn((pool, opts) => ({ dialect: "pg", pool, opts })),

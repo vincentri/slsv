@@ -5,6 +5,7 @@ import { existsSync, writeFileSync } from "fs";
 import type { AppConfig } from "./config.js";
 import type { AwsProvider } from "./providers/aws/index.js";
 import { bundleHandler } from "./bundle.js";
+import { lintApp } from "./lint.js";
 
 // Get the frontend deps ready before starting its dev server (pnpm-only). pnpm gates native
 // build scripts (vite's esbuild) and exits non-zero — and pnpm 11 ignores the
@@ -49,27 +50,52 @@ export async function startDev(
 
   if (!cfg.functions || Object.keys(cfg.functions).length === 0) return;
 
-  const srcDir = path.join(cwd, "src");
-
   for (const name of Object.keys(cfg.functions)) {
     provider.tailLogs(`${cfg.app}-${stage}-${name}`, true).catch(() => {});
   }
 
-  console.log(`\nWatching ${srcDir}...`);
+  // Watch the whole project — handler paths live wherever slsv.yml points (backend/, src/, …),
+  // not a fixed dir. Ignore deps, build output, VCS, and the frontend (vite owns its own reload).
+  const feDir = cfg.frontend ? path.dirname(path.resolve(cwd, cfg.frontend.src)) : null;
+  const ignored = (p: string) =>
+    p.includes(`${path.sep}node_modules${path.sep}`) ||
+    p.includes(`${path.sep}dist${path.sep}`) ||
+    p.includes(`${path.sep}.git${path.sep}`) ||
+    (feDir !== null && (p === feDir || p.startsWith(feDir + path.sep)));
 
-  const watcher = chokidar.watch(srcDir, { ignoreInitial: true }).on("change", async () => {
+  console.log(`\nWatching ${cwd}...`);
+
+  const reload = async () => {
     console.log("\nChange detected — rebundling...");
+    // Same preflight deploy runs — a lint failure (bad handler/export, undeclared SDK name)
+    // must fail the reload loudly, not silently leave the old code running.
+    try {
+      lintApp(cfg, cwd);
+    } catch (e) {
+      console.error(`  ✗ ${(e as Error).message}`);
+      console.error("  ⚠ NOT deployed — API still running the previous version. Fix the above to reload.");
+      return;
+    }
     for (const [name, fn] of Object.entries(cfg.functions!)) {
       const fnName = `${cfg.app}-${stage}-${name}`;
       try {
-        const { zip } = await bundleHandler(fn.handler, cwd);
+        const { zip } = await bundleHandler(fn.handler, cwd, !!fn.http);
         await provider.updateFunctionCode(fnName, zip);
         console.log(`  ✓ ${fnName}`);
       } catch (e) {
         console.error(`  ✗ ${fnName}:`, (e as Error).message);
       }
     }
-  });
+  };
+
+  // Rebundle on edits AND on new/removed files — splitting the router into more files (a fresh
+  // `add`) should reload too, not just `change`. New `functions:` entries still need a restart
+  // (cfg is a startup snapshot; provisioning a new Lambda isn't a live-reload concern).
+  const watcher = chokidar
+    .watch(cwd, { ignoreInitial: true, ignored })
+    .on("change", reload)
+    .on("add", reload)
+    .on("unlink", reload);
 
   await new Promise<void>((resolve) => {
     const shutdown = () => {

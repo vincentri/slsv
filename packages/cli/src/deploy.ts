@@ -75,6 +75,14 @@ export async function deploy(
       provider.wireCron(functions, fnOutputs, prefix),
     ]);
 
+    // Custom API domain (aws-only). If set, it becomes the API's public URL — so the frontend
+    // build gets injected with it (below) instead of the raw execute-api URL.
+    const customApiUrl = await provider.wireApiDomain(cfg.api, prefix);
+    if (customApiUrl) {
+      console.log(`   API: ${customApiUrl}`);
+      apiUrl = customApiUrl;
+    }
+
     console.log("→ Reconcile (prune orphans)");
     await provider.reconcile(cfg, stage);
   }

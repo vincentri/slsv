@@ -1,4 +1,5 @@
 import { Command, Option } from "commander";
+import { config as dotenv } from "dotenv";
 import path from "path";
 import { existsSync } from "fs";
 import { loadConfig, ConfigError } from "./config.js";
@@ -25,18 +26,21 @@ program
   .command("init [name]")
   .description("Scaffold a new slsv app")
   .option("--demo", "Scaffold the full demo (HTTP + queue + cron + webhook)", false)
+  .option("--db", "Scaffold an API-only app wired to an external Postgres (URL in secrets:)", false)
   .option("--yes", "Skip prompts, use current directory name (CI-friendly)", false)
-  .action(async (name: string | undefined, opts: { demo: boolean; yes: boolean }) => {
-    const template: Template = opts.demo ? "demo" : "minimal";
+  .action(async (name: string | undefined, opts: { demo: boolean; db: boolean; yes: boolean }) => {
+    const template: Template = opts.demo ? "demo" : opts.db ? "api-db" : "minimal";
+    // api-db is backend-only (no frontend); other templates default to fullstack.
+    const flagStack: Stack = template === "api-db" ? "backend" : "fullstack";
     const cwd = process.cwd();
 
     if (name) {
-      runScaffold(name, cwd, template, "fullstack");
+      runScaffold(name, cwd, template, flagStack);
       return;
     }
 
     if (opts.yes || !process.stdout.isTTY) {
-      runScaffold(path.basename(cwd), cwd, template, "fullstack");
+      runScaffold(path.basename(cwd), cwd, template, flagStack);
       return;
     }
 
@@ -61,29 +65,50 @@ program
       process.exit(0);
     }
 
-    const stackResult = await select({
-      message: "What are you building?",
+    const templateResult = await select({
+      message: "Template",
+      initialValue: template,
       options: [
-        { value: "fullstack", label: "Fullstack", hint: "API + frontend (Vite)" },
-        { value: "backend", label: "Backend only", hint: "API + database, no frontend" },
-        { value: "frontend", label: "Frontend only", hint: "Static site (Vite), no API" },
+        { value: "minimal", label: "Minimal", hint: "1 HTTP fn + in-memory store" },
+        { value: "demo", label: "Demo", hint: "HTTP + queue + cron + webhook + stores" },
+        { value: "api-db", label: "API + Postgres", hint: "API-only, external Postgres via URL" },
       ],
     });
 
-    if (isCancel(stackResult)) {
+    if (isCancel(templateResult)) {
       cancel("Cancelled.");
       process.exit(0);
     }
 
-    const stack = stackResult as Stack;
+    const chosenTemplate = templateResult as Template;
+
+    // api-db is backend-only — skip the stack question.
+    let stack: Stack = "backend";
+    if (chosenTemplate !== "api-db") {
+      const stackResult = await select({
+        message: "What are you building?",
+        options: [
+          { value: "fullstack", label: "Fullstack", hint: "API + frontend (Vite)" },
+          { value: "backend", label: "Backend only", hint: "API + database, no frontend" },
+          { value: "frontend", label: "Frontend only", hint: "Static site (Vite), no API" },
+        ],
+      });
+
+      if (isCancel(stackResult)) {
+        cancel("Cancelled.");
+        process.exit(0);
+      }
+      stack = stackResult as Stack;
+    }
+
     const appName = result as string;
 
     const s = spinner();
     s.start("Scaffolding...");
-    initScaffold(appName, cwd, template, stack);
+    initScaffold(appName, cwd, chosenTemplate, stack);
     s.stop("Done");
 
-    outro(`Created ./${appName}  →  ${initOutroMessage(appName, stack, template)}`);
+    outro(`Created ./${appName}  →  ${initOutroMessage(appName, stack, chosenTemplate)}`);
   });
 
 function runScaffold(name: string, cwd: string, template: Template, stack: Stack) {
@@ -202,6 +227,10 @@ program
   .action(async (opts: { stage: string; target: "local" | "aws"; yes: boolean }) => {
     const cwd = process.cwd();
     const stage = validStage(opts.stage);
+    // Load .env so destroy has the same secrets deploy does — notably CLOUDFLARE_API_TOKEN,
+    // needed to delete the custom-domain DNS records (stage file wins; dotenv never overwrites).
+    dotenv({ path: path.join(cwd, `.env.${stage}`) });
+    dotenv({ path: path.join(cwd, ".env") });
     const cfg = loadConfig(cwd, stage);
 
     if (!opts.yes) {

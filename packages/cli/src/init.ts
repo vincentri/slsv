@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 // Injected by tsup at build time (see tsup.config.ts) — the SDK version this CLI ships with.
 declare const __SDK_VERSION__: string;
 
-export type Template = "minimal" | "demo";
+export type Template = "minimal" | "demo" | "api-db";
 export type Stack = "backend" | "frontend" | "fullstack";
 
 export function initScaffold(
@@ -18,15 +18,31 @@ export function initScaffold(
   const hasBackend = stack !== "frontend";
   const hasFrontend = stack !== "backend";
 
+  if (template === "api-db") {
+    scaffoldApiDb(dir, name);
+    return;
+  }
+
   if (template === "minimal") {
     if (hasBackend) {
-      mkdirSync(path.join(dir, "backend"), { recursive: true });
+      mkdirSync(path.join(dir, "backend/routes/links"), { recursive: true });
+      mkdirSync(path.join(dir, "backend/routes/health"), { recursive: true });
+      mkdirSync(path.join(dir, "backend/lib"), { recursive: true });
       mkdirSync(path.join(dir, "test"), { recursive: true });
       writeFileSync(path.join(dir, "package.json"), PKG_JSON(name, dir));
       writeFileSync(path.join(dir, "tsconfig.json"), TSCONFIG);
       writeFileSync(path.join(dir, ".env.example"), MINIMAL_ENV_EXAMPLE);
-      writeFileSync(path.join(dir, "backend/api.ts"), MINIMAL_API_HANDLER);
-      writeFileSync(path.join(dir, "test/api.test.ts"), MINIMAL_API_TEST);
+      // File-based routing: root loader + one file per handler, aggregated per feature folder.
+      // Add an endpoint = new file + one line in that feature's index; scales to many routes.
+      writeFileSync(path.join(dir, "backend/routes/route.ts"), MINIMAL_ROUTE_LOADER);
+      writeFileSync(path.join(dir, "backend/lib/store.ts"), MINIMAL_STORE);
+      writeFileSync(path.join(dir, "backend/routes/health/index.ts"), MINIMAL_HEALTH_INDEX);
+      writeFileSync(path.join(dir, "backend/routes/health/check.ts"), MINIMAL_HEALTH_CHECK);
+      writeFileSync(path.join(dir, "backend/routes/links/index.ts"), MINIMAL_LINKS_INDEX);
+      writeFileSync(path.join(dir, "backend/routes/links/list.ts"), MINIMAL_LINKS_LIST);
+      writeFileSync(path.join(dir, "backend/routes/links/create.ts"), MINIMAL_LINKS_CREATE);
+      writeFileSync(path.join(dir, "test/route.test.ts"), MINIMAL_API_TEST);
+      writeFileSync(path.join(dir, "vitest.config.ts"), VITEST_CONFIG);
     }
     if (hasFrontend) {
       mkdirSync(path.join(dir, "frontend/src"), { recursive: true });
@@ -67,6 +83,40 @@ function copyDemoTemplate(dir: string, name: string) {
   );
 }
 
+// api-db: API-only app wired to an EXTERNAL Postgres via a connection string (Supabase/Neon/
+// self-host). No `databases:` block — slsv doesn't provision it. DATABASE_URL rides in `secrets:`,
+// fetched at cold start, and a lazy drizzle client connects on first query. Ships the drizzle-kit
+// `db:generate` flow (schema.ts is the DDL source of truth; you apply the SQL yourself).
+function scaffoldApiDb(dir: string, name: string) {
+  mkdirSync(path.join(dir, "backend/database/queries"), { recursive: true });
+  mkdirSync(path.join(dir, "backend/routes/health"), { recursive: true });
+  mkdirSync(path.join(dir, "backend/routes/users"), { recursive: true });
+  mkdirSync(path.join(dir, "test"), { recursive: true });
+
+  writeFileSync(path.join(dir, "slsv.yml"), API_DB_SLSV_YML(name));
+  writeFileSync(path.join(dir, "package.json"), API_DB_PKG_JSON(name, dir));
+  writeFileSync(path.join(dir, "tsconfig.json"), API_DB_TSCONFIG);
+  writeFileSync(path.join(dir, "drizzle.config.ts"), API_DB_DRIZZLE_CONFIG);
+  writeFileSync(path.join(dir, "vitest.config.ts"), VITEST_CONFIG);
+  writeFileSync(path.join(dir, ".gitignore"), GITIGNORE);
+  writeFileSync(path.join(dir, "pnpm-workspace.yaml"), PNPM_WORKSPACE);
+  writeFileSync(path.join(dir, ".env.example"), API_DB_ENV_EXAMPLE);
+  writeFileSync(path.join(dir, ".env.dev"), API_DB_ENV_DEV(name));
+  writeFileSync(path.join(dir, ".env.prod"), API_DB_ENV_PROD(name));
+
+  writeFileSync(path.join(dir, "backend/database/schema.ts"), API_DB_SCHEMA);
+  writeFileSync(path.join(dir, "backend/database/index.ts"), API_DB_CLIENT);
+  writeFileSync(path.join(dir, "backend/database/queries/users.ts"), API_DB_QUERY_USERS);
+
+  writeFileSync(path.join(dir, "backend/routes/route.ts"), API_DB_ROUTE_LOADER);
+  writeFileSync(path.join(dir, "backend/routes/health/index.ts"), MINIMAL_HEALTH_INDEX);
+  writeFileSync(path.join(dir, "backend/routes/health/check.ts"), API_DB_HEALTH_CHECK);
+  writeFileSync(path.join(dir, "backend/routes/users/index.ts"), API_DB_USERS_INDEX);
+  writeFileSync(path.join(dir, "backend/routes/users/get.ts"), API_DB_USERS_GET);
+
+  writeFileSync(path.join(dir, "test/route.test.ts"), API_DB_ROUTE_TEST);
+}
+
 function sdkDependency(dir: string) {
   const localSdk = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -90,8 +140,12 @@ function replaceInFile(file: string, search: RegExp, replacement: string) {
 export function initOutroMessage(
   name: string,
   stack: Stack,
-  _template: Template = "minimal",
+  template: Template = "minimal",
 ): string {
+  // api-db ships a ready .env.dev (edit its DATABASE_URL) — no cp, no frontend.
+  if (template === "api-db")
+    return `cd ${name} && pnpm install && (edit .env.dev DATABASE_URL) && slsv dev`;
+
   const base = `cd ${name} && cp .env.example .env`;
   const fe = `cd frontend && pnpm install && cd ..`;
   const run = "slsv dev";
@@ -107,7 +161,7 @@ const MINIMAL_SLSV_YML = (name: string, stack: Stack = "fullstack") => {
 functions:
   api:
     runtime: nodejs22
-    handler: ./backend/api.handler
+    handler: ./backend/routes/route.handler
     http:
       - method: ANY
         path: /api/{proxy+}`;
@@ -127,62 +181,108 @@ const MINIMAL_ENV_EXAMPLE = `# No secrets required for the minimal template
 # Copy to .env and run: slsv dev
 `;
 
-const MINIMAL_API_HANDLER = `import { get, json, post, router } from '@slsv/sdk'
+// File-based routing. Root loader spreads each feature's route array into one router; every
+// handler is its own file under routes/<feature>/, collected by that folder's index.ts.
+const MINIMAL_ROUTE_LOADER = `import { router } from '@slsv/sdk'
+import { healthRoutes } from './health'
+import { linkRoutes } from './links'
 
-type Link = { id: string; url: string; createdAt: string }
+// slsv.yml functions.api.handler points here. New feature = new folder + import + spread.
+export const handler = router([...linkRoutes, ...healthRoutes])
+`;
 
-const links = new Map<string, Link>()
+const MINIMAL_STORE = `// Shared in-memory store for the demo routes. Swap for db('links') when you add a table.
+export type Link = { id: string; url: string; createdAt: string }
 
-export const handler = router([
-  get('/api/health', () => json({ status: 'ok' })),
-  post('/api/links', async (req) => {
-    const body = req.body as { url?: string } | undefined
-    if (!body?.url) return json({ error: 'url is required' }, 400)
+export const links = new Map<string, Link>()
+`;
 
-    const link = {
-      id: Date.now().toString(),
-      url: body.url,
-      createdAt: new Date().toISOString(),
-    }
-    links.set(link.id, link)
-    return json(link, 201)
-  }),
-  get('/api/links', async () => json([...links.values()])),
-])
+const MINIMAL_HEALTH_CHECK = `import { get, json } from '@slsv/sdk'
+
+// Path is relative to the API mount (slsv.yml \`path: /api/{proxy+}\`) — API Gateway strips the
+// '/api' prefix, so this route is '/health', not '/api/health'. Change the mount, routes inherit.
+export const check = get('/health', () => json({ status: 'ok' }))
+`;
+
+const MINIMAL_HEALTH_INDEX = `import { check } from './check'
+
+export const healthRoutes = [check]
+`;
+
+const MINIMAL_LINKS_LIST = `import { get, json } from '@slsv/sdk'
+import { links } from '../../lib/store'
+
+// Path '/' — links/index.ts groups it under '/links' (the slsv.yml '/api/{proxy+}' mount adds '/api').
+export const list = get('/', () => json([...links.values()]))
+`;
+
+const MINIMAL_LINKS_CREATE = `import { json, post } from '@slsv/sdk'
+import { links } from '../../lib/store'
+
+export const create = post('/', (req) => {
+  const body = req.body as { url?: string } | undefined
+  if (!body?.url) return json({ error: 'url is required' }, 400)
+
+  const link = { id: Date.now().toString(), url: body.url, createdAt: new Date().toISOString() }
+  links.set(link.id, link)
+  return json(link, 201)
+})
+`;
+
+const MINIMAL_LINKS_INDEX = `import { group } from '@slsv/sdk'
+import { create } from './create'
+import { list } from './list'
+
+// One file per handler, grouped under '/links'. The slsv.yml '/api/{proxy+}' mount adds the
+// '/api' prefix, so these serve at '/api/links'. Add an endpoint = new file + one entry here.
+export const linkRoutes = group('/links', [list, create])
 `;
 
 // Example unit test — invoke the handler with a fake API Gateway event, assert the response.
 // No AWS, no Floci. Run with \`pnpm test\`.
 const MINIMAL_API_TEST = `import { describe, it, expect } from 'vitest'
-import { handler } from '../backend/api.js'
+import { handler } from '../backend/routes/route.js'
 
-const call = (method: string, path: string, body?: unknown) =>
+// slsv.yml mounts the fn at '/api/{proxy+}', so API Gateway passes the sub-path (below '/api')
+// in pathParameters.proxy. The router matches routes relative to the mount ('/links'), so pass
+// the sub-path here — 'links', not '/api/links'.
+const call = (method: string, sub: string, body?: unknown) =>
   handler({
     httpMethod: method,
-    path,
+    path: \`/api/\${sub}\`,
+    pathParameters: { proxy: sub },
     headers: {},
     body: body === undefined ? undefined : JSON.stringify(body),
   } as never) as Promise<{ statusCode: number; body: string }>
 
 describe('api', () => {
   it('health check returns ok', async () => {
-    const res = await call('GET', '/api/health')
+    const res = await call('GET', 'health')
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).status).toBe('ok')
   })
 
   it('rejects a link with no url (400)', async () => {
-    const res = await call('POST', '/api/links', {})
+    const res = await call('POST', 'links', {})
     expect(res.statusCode).toBe(400)
   })
 
   it('creates a link, then lists it', async () => {
-    const created = await call('POST', '/api/links', { url: 'https://slsv.dev' })
+    const created = await call('POST', 'links', { url: 'https://slsv.dev' })
     expect(created.statusCode).toBe(201)
     const id = JSON.parse(created.body).id
-    const list = JSON.parse((await call('GET', '/api/links')).body)
+    const list = JSON.parse((await call('GET', 'links')).body)
     expect(list.some((l: { id: string }) => l.id === id)).toBe(true)
   })
+})
+`;
+
+// Pin test discovery so a scaffold nested inside another repo doesn't inherit a
+// parent vitest.config walked up the tree (wrong `include` → "No test files found").
+const VITEST_CONFIG = `import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: { include: ['test/**/*.test.ts'] },
 })
 `;
 
@@ -203,9 +303,10 @@ const PKG_JSON = (name: string, dir: string) =>
         "@slsv/sdk": sdkDependency(dir),
       },
       devDependencies: {
-        typescript: "^5.4.0",
-        "@types/node": "^20.0.0",
-        vitest: "^1.4.0",
+        typescript: "^7.0.0",
+        "@types/node": "^26.0.0",
+        vite: "^8.0.0",
+        vitest: "^4.1.0",
       },
     },
     null,
@@ -244,9 +345,236 @@ dist/
 .slsv/
 `;
 
+// ─── api-db template (external Postgres via URL) ───────────────────────────
+
+const API_DB_SLSV_YML = (name: string) => `app: ${name}
+
+functions:
+  api:
+    runtime: nodejs22
+    handler: ./backend/routes/route.handler
+    http:
+      - method: ANY
+        path: /api/{proxy+}
+    environment:
+      DB_SSL: "off" # dev/local: no TLS. database/index.ts: "off" => ssl:false, else ssl:"require"
+
+# External Postgres (Supabase/Neon/self-host): the connection string rides in secrets:, NOT a
+# databases: block — slsv doesn't provision or migrate it. Handlers fetch it at cold start.
+secrets:
+  - DATABASE_URL
+
+stages:
+  prod:
+    functions:
+      api:
+        environment:
+          DB_SSL: "on" # prod: any non-"off" value => ssl:"require"
+`;
+
+const API_DB_ENV_EXAMPLE = `# Copy the relevant value into .env.dev (local/dev) and .env.prod (production).
+# slsv upserts this into Secrets Manager and injects only the secret id — the value is fetched
+# at runtime, never baked into the Lambda env.
+DATABASE_URL=postgres://user:password@host:5432/dbname
+`;
+
+const API_DB_ENV_DEV = (name: string) => `# dev stage (also used by \`slsv dev\` locally). DB_SSL is "off" (slsv.yml) → no TLS.
+# Point this at your dev Postgres (a local instance, or a Supabase/Neon dev branch).
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/${name}_dev
+`;
+
+const API_DB_ENV_PROD = (name: string) => `# prod stage. DB_SSL is "on" (slsv.yml stages.prod) → ssl:"require".
+# TODO: fill with the real prod Postgres URL before \`slsv deploy --stage prod\`.
+DATABASE_URL=postgres://USER:PASSWORD@PROD-HOST:5432/${name}_prod
+`;
+
+const API_DB_DRIZZLE_CONFIG = `import { defineConfig } from "drizzle-kit";
+
+// schema.ts is the source of truth for the DDL. \`pnpm db:generate\` diffs it and writes SQL
+// migration files — it does NOT touch the DB. You apply the SQL yourself (psql/CI); slsv never
+// runs migrations (external DB). DATABASE_URL comes from --env-file=.env.dev (see package.json).
+export default defineConfig({
+  schema: "./backend/database/schema.ts",
+  out: "./backend/database/migrations",
+  dialect: "postgresql",
+  dbCredentials: { url: process.env.DATABASE_URL! },
+});
+`;
+
+const API_DB_SCHEMA = `import { pgTable, uuid, text, timestamp } from "drizzle-orm/pg-core";
+
+// Starter table. Edit this, then \`pnpm db:generate\` to emit the migration SQL, and apply it
+// yourself. This file is the typed source of truth the queries import.
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull().unique(),
+  name: text("name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+`;
+
+const API_DB_CLIENT = `import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema";
+
+// Lazy Postgres client. Build it on FIRST query, not at import — the route prelude
+// (backend/routes/route.ts) fetches DATABASE_URL into process.env at cold start, which runs
+// before any handler body. The Proxy keeps every \`db.x\` call site unchanged while deferring
+// the connection until env is populated.
+let real: PostgresJsDatabase<typeof schema> | undefined;
+
+function build() {
+  const url = process.env.DATABASE_URL;
+  if (!url)
+    throw new Error("slsv: DATABASE_URL missing — declare it in secrets: (loaded at cold start)");
+  const client = postgres(url, {
+    max: Number(process.env.DB_POOL_MAX ?? 3), // keep low for serverless/pgBouncer
+    idle_timeout: 20,
+    connect_timeout: 10,
+    prepare: false, // safe with transaction poolers (Supabase 6543, pgBouncer)
+    ssl: process.env.DB_SSL === "off" ? false : "require",
+  });
+  return drizzle(client, { schema });
+}
+
+// ponytail: Proxy defers client creation to first query so env is populated first. Drop it if
+// this module ever gets an explicit async init.
+export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
+  get: (_t, p) => ((real ??= build()) as never)[p],
+});
+`;
+
+const API_DB_QUERY_USERS = `import { eq } from "drizzle-orm";
+import { db } from "../index";
+import { users } from "../schema";
+
+// One query per concern; add more files under queries/ as the app grows.
+export async function getUserById(id: string) {
+  return db.query.users.findFirst({ where: eq(users.id, id) });
+}
+`;
+
+const API_DB_ROUTE_LOADER = `import { router, secret } from '@slsv/sdk'
+import { healthRoutes } from './health'
+import { userRoutes } from './users'
+
+// slsv.yml functions.api.handler points here. New feature = new folder + import + spread.
+const dispatch = router([...userRoutes, ...healthRoutes])
+
+// Cold-start prelude: pull the DATABASE_URL secret into process.env once, before any handler
+// runs, so the lazy db client (backend/database/index.ts) can read it synchronously. secret()
+// caches per container, so this is a first-invocation cost only.
+let envReady = false
+export const handler = async (event: unknown) => {
+  if (!envReady) {
+    process.env.DATABASE_URL ??= await secret('DATABASE_URL')
+    envReady = true
+  }
+  return dispatch(event as never)
+}
+`;
+
+const API_DB_HEALTH_CHECK = `import { get, json } from '@slsv/sdk'
+
+// Path is relative to the API mount (slsv.yml \`path: /api/{proxy+}\`) — serves at '/api/health'.
+export const check = get('/health', () => json({ status: 'ok' }))
+`;
+
+const API_DB_USERS_INDEX = `import { group } from '@slsv/sdk'
+import { getOne } from './get'
+
+// Grouped under '/users' (mount adds '/api' → '/api/users'). Add an endpoint = new file + entry.
+export const userRoutes = group('/users', [getOne])
+`;
+
+const API_DB_USERS_GET = `import { get, json } from '@slsv/sdk'
+import { getUserById } from '../../database/queries/users'
+
+// GET /api/users/{id} — proof the external Postgres round-trips through a query module.
+export const getOne = get('/{id}', async (req) => {
+  const user = await getUserById(req.params.id)
+  return user ? json(user) : json({ error: 'not found' }, 404)
+})
+`;
+
+const API_DB_ROUTE_TEST = `import { describe, it, expect, beforeAll } from 'vitest'
+
+// The handler's cold-start prelude does \`process.env.DATABASE_URL ??= await secret(...)\`. Set a
+// dummy URL first so it skips the Secrets Manager fetch (no Floci here). Health doesn't touch the
+// DB, so no real connection is made; DB routes are verified end-to-end via \`slsv dev\`.
+let handler: (e: unknown) => Promise<{ statusCode: number; body: string }>
+
+beforeAll(async () => {
+  process.env.DATABASE_URL = 'postgres://localhost:5432/test'
+  ;({ handler } = (await import('../backend/routes/route.js')) as {
+    handler: (e: unknown) => Promise<{ statusCode: number; body: string }>
+  })
+})
+
+// slsv.yml mounts the fn at '/api/{proxy+}', so API Gateway passes the sub-path in
+// pathParameters.proxy. The router matches routes relative to the mount ('/health').
+const call = (method: string, sub: string) =>
+  handler({ httpMethod: method, path: \`/api/\${sub}\`, pathParameters: { proxy: sub }, headers: {} })
+
+describe('api', () => {
+  it('health check returns ok', async () => {
+    const res = await call('GET', 'health')
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).status).toBe('ok')
+  })
+
+  it('404s an unknown route', async () => {
+    const res = await call('GET', 'nope')
+    expect(res.statusCode).toBe(404)
+  })
+})
+`;
+
+const API_DB_TSCONFIG = JSON.stringify(
+  {
+    ...(JSON.parse(TSCONFIG) as Record<string, unknown>),
+    compilerOptions: {
+      ...(JSON.parse(TSCONFIG) as { compilerOptions: Record<string, unknown> }).compilerOptions,
+      types: ["node"], // drizzle/postgres need node globals (process, Buffer)
+    },
+  },
+  null,
+  2,
+);
+
+const API_DB_PKG_JSON = (name: string, dir: string) =>
+  JSON.stringify(
+    {
+      name,
+      version: "0.1.0",
+      private: true,
+      type: "module",
+      scripts: {
+        build: "tsc",
+        test: "vitest run",
+        // Offline: diffs schema.ts → SQL migration files. Never touches the DB (you apply the
+        // SQL yourself). --env-file loads DATABASE_URL for the config; generate ignores creds.
+        "db:generate": "node --env-file=.env.dev node_modules/drizzle-kit/bin.cjs generate",
+      },
+      dependencies: {
+        "@slsv/sdk": sdkDependency(dir),
+        "drizzle-orm": "^0.45.2",
+        postgres: "^3.4.9",
+      },
+      devDependencies: {
+        "drizzle-kit": "^0.31.10",
+        typescript: "^7.0.0",
+        "@types/node": "^26.0.0",
+        vitest: "^4.1.0",
+      },
+    },
+    null,
+    2,
+  );
+
 // ─── Frontend scaffold ────────────────────────────────────────────────────
 
-const FRONTEND_HTML = (name: string) => `<!DOCTYPE html>
+const FRONTEND_HTML = (name: string) => `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -271,60 +599,69 @@ const FRONTEND_PKG_JSON = (name: string) =>
         dev: "vite",
         build: "vite build",
         preview: "vite preview",
+        lint: "oxlint . && tsc --noEmit",
+        format: "oxfmt .",
+        "format:check": "oxfmt --check .",
       },
       devDependencies: {
-        vite: "^5.0.0",
-        typescript: "^5.4.0",
+        oxfmt: "^0.58.0",
+        oxlint: "^1.73.0",
+        typescript: "^7.0.0",
+        vite: "^8.0.0",
       },
     },
     null,
     2,
-  );
+  ) + "\n";
 
-const FRONTEND_VITE_CONFIG = `import { defineConfig } from 'vite'
+const FRONTEND_VITE_CONFIG = `import { defineConfig } from "vite";
 
 export default defineConfig({
   server: {
     proxy: {
-      '/api': {
-        target: process.env.SLSV_API_URL || 'http://localhost:4566',
+      "/api": {
+        target: process.env.SLSV_API_URL || "http://localhost:4566",
         changeOrigin: true,
       },
     },
   },
-})
+});
 `;
 
 const FRONTEND_ENV_EXAMPLE = `# No secrets required for the frontend-only template
 # Copy to .env and run: slsv dev
 `;
 
-const FRONTEND_MAIN_STANDALONE = `const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = '<h1>Hello from slsv</h1>'
+const FRONTEND_MAIN_STANDALONE = `const app = document.querySelector<HTMLDivElement>("#app")!;
+app.innerHTML = "<h1>Hello from slsv</h1>";
 `;
 
-const FRONTEND_MAIN_FULLSTACK = `const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = '<h1>Loading…</h1>'
+const FRONTEND_MAIN_FULLSTACK = `const app = document.querySelector<HTMLDivElement>("#app")!;
+app.innerHTML = "<h1>Loading…</h1>";
 
 // API base: your VITE_API_URL wins; else slsv injects the deployed API Gateway URL as
 // VITE_SLSV_API_URL at build; else '' (relative → local \`slsv dev\` proxies /api).
-const API = import.meta.env.VITE_API_URL || import.meta.env.VITE_SLSV_API_URL || ''
+const API = import.meta.env.VITE_API_URL || import.meta.env.VITE_SLSV_API_URL || "";
 
 fetch(\`\${API}/api/health\`)
-  .then(r => r.json())
-  .then(data => { app.innerHTML = \`<h1>API says: \${JSON.stringify(data)}</h1>\` })
-  .catch(() => { app.innerHTML = '<h1>API unreachable — is slsv dev running?</h1>' })
+  .then((r) => r.json())
+  .then((data) => {
+    app.innerHTML = \`<h1>API says: \${JSON.stringify(data)}</h1>\`;
+  })
+  .catch(() => {
+    app.innerHTML = "<h1>API unreachable — is slsv dev running?</h1>";
+  });
 `;
 
 // Vite env typings so import.meta.env.VITE_* typechecks. Written to src/vite-env.d.ts.
 const FRONTEND_VITE_ENV_DTS = `/// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_API_URL?: string
-  readonly VITE_SLSV_API_URL?: string
+  readonly VITE_API_URL?: string;
+  readonly VITE_SLSV_API_URL?: string;
 }
 
 interface ImportMeta {
-  readonly env: ImportMetaEnv
+  readonly env: ImportMetaEnv;
 }
 `;

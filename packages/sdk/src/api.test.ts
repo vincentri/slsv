@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { get, json, post, redirect, request, router, type Middleware } from "./api.js";
+import { describe, expect, it, vi } from "vitest";
+import { get, group, json, post, redirect, request, router, type Middleware } from "./api.js";
 
 describe("api helpers", () => {
   it("normalizes HTTP API v2 events", () => {
@@ -22,6 +22,31 @@ describe("api helpers", () => {
     expect(req.body?.name).toBe("Ada");
   });
 
+  it("group() prefixes paths, keeps subpaths, and prepends shared middleware", async () => {
+    const tag: string[] = [];
+    const groupMw: Middleware = (_req, next) => (tag.push("g"), next());
+    const routeMw: Middleware = (_req, next) => (tag.push("r"), next());
+
+    const routes = group(
+      "/api/links",
+      [
+        get("/", () => json({ hit: "list" })),
+        get("/{id}", { middleware: [routeMw] }, (req) => json({ hit: req.params.id })),
+      ],
+      [groupMw],
+    );
+
+    expect(routes.map((r) => r.path)).toEqual(["/api/links", "/api/links/{id}"]);
+
+    const handler = router(routes);
+    const list = await handler({ rawPath: "/api/links", requestContext: { http: { method: "GET" } } });
+    expect(JSON.parse(list.body)).toEqual({ hit: "list" });
+
+    const one = await handler({ rawPath: "/api/links/42", requestContext: { http: { method: "GET" } } });
+    expect(JSON.parse(one.body)).toEqual({ hit: "42" });
+    expect(tag).toEqual(["g", "g", "r"]); // group mw runs both routes; route mw only the second
+  });
+
   it("matches greedy proxy routes", async () => {
     const handler = router([
       {
@@ -37,6 +62,29 @@ describe("api helpers", () => {
     });
 
     expect(JSON.parse(res.body)).toEqual({ proxy: "links/123/click" });
+  });
+
+  it("inherits the slsv.yml mount prefix from pathParameters.proxy (routes stay prefix-free)", async () => {
+    // slsv.yml mounts at `/v1/{proxy+}`; API Gateway sends the sub-path in pathParameters.proxy.
+    // Route is written relative to the mount ('/health'), no '/v1' — the router strips it.
+    const handler = router([get("/health", () => json({ ok: true }))]);
+
+    const res = await handler({
+      rawPath: "/v1/health",
+      pathParameters: { proxy: "health" },
+      requestContext: { http: { method: "GET" } },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ ok: true });
+
+    // param routes below the mount still capture: proxy "users/42" → '/users/{id}' → id=42.
+    const users = router([get("/users/{id}", (req) => json({ id: req.params.id }))]);
+    const one = await users({
+      rawPath: "/v1/users/42",
+      pathParameters: { proxy: "users/42" },
+      requestContext: { http: { method: "GET" } },
+    });
+    expect(JSON.parse(one.body)).toEqual({ id: "42" });
   });
 
   it("returns not found when no route matches", async () => {
@@ -61,6 +109,25 @@ describe("api helpers", () => {
 
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body)).toEqual({ error: "Invalid JSON body" });
+  });
+
+  it("500s on uncaught errors — logs and returns the error detail", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handler = router([
+      {
+        method: "GET",
+        path: "/api/boom",
+        handler: () => {
+          throw new Error("kaboom");
+        },
+      },
+    ]);
+    const res = await handler({ rawPath: "/api/boom", requestContext: { http: { method: "GET" } } });
+
+    expect(res.statusCode).toBe(500);
+    expect(JSON.parse(res.body)).toEqual({ error: "Internal Server Error", detail: "kaboom" });
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
   it("builds common responses", () => {

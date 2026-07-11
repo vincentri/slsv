@@ -3,13 +3,13 @@ import { describe, it, expect, vi } from "vitest";
 // Mock the S3 client so the test never touches AWS/Floci.
 const send = vi.fn();
 vi.mock("@aws-sdk/client-s3", () => ({
-  S3Client: vi.fn(() => ({ send })),
-  CreateBucketCommand: vi.fn((i) => ({ __cmd: "CreateBucket", ...i })),
-  HeadBucketCommand: vi.fn((i) => ({ __cmd: "HeadBucket", ...i })),
-  PutBucketTaggingCommand: vi.fn((i) => ({ __cmd: "PutBucketTagging", ...i })),
-  PutPublicAccessBlockCommand: vi.fn((i) => ({ __cmd: "PutPublicAccessBlock", ...i })),
-  PutBucketPolicyCommand: vi.fn((i) => ({ __cmd: "PutBucketPolicy", ...i })),
-  PutBucketCorsCommand: vi.fn((i) => ({ __cmd: "PutBucketCors", ...i })),
+  S3Client: vi.fn(function () { return { send }; }),
+  CreateBucketCommand: vi.fn(function (i) { return { __cmd: "CreateBucket", ...i }; }),
+  HeadBucketCommand: vi.fn(function (i) { return { __cmd: "HeadBucket", ...i }; }),
+  PutBucketTaggingCommand: vi.fn(function (i) { return { __cmd: "PutBucketTagging", ...i }; }),
+  PutPublicAccessBlockCommand: vi.fn(function (i) { return { __cmd: "PutPublicAccessBlock", ...i }; }),
+  PutBucketPolicyCommand: vi.fn(function (i) { return { __cmd: "PutBucketPolicy", ...i }; }),
+  PutBucketCorsCommand: vi.fn(function (i) { return { __cmd: "PutBucketCors", ...i }; }),
 }));
 
 import { ensureBuckets } from "./s3.js";

@@ -2,7 +2,8 @@ import { CloudWatchLogsClient, FilterLogEventsCommand } from "@aws-sdk/client-cl
 
 export async function tailLogs(logs: CloudWatchLogsClient, fnName: string, follow = false) {
   const logGroupName = `/aws/lambda/${fnName}`;
-  let startTime = Date.now() - 60_000;
+  // Start from now, not the past — a rerun must not replay the previous run's logs/errors.
+  let startTime = Date.now();
 
   const printBatch = async () => {
     try {

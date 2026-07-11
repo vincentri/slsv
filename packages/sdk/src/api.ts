@@ -96,11 +96,36 @@ export const del = <TBody = unknown>(
   b?: ApiHandler<TBody>,
 ) => route("DELETE", path, a, b);
 
+// Prefix every route's path with a basePath, and optionally prepend shared middleware to the
+// whole group. Compose feature folders by spreading into router():
+//   router([...group('/api/links', linkRoutes), ...group('/api/users', userRoutes)])
+// Inside a group, a route uses '/' for the group root and '/{id}' for subpaths.
+export function group(prefix: string, routes: Route[], middleware: Middleware[] = []): Route[] {
+  return routes.map((r) => ({
+    ...r,
+    path: (prefix + r.path).replace(/\/$/, "") || "/",
+    middleware: middleware.length ? [...middleware, ...(r.middleware ?? [])] : r.middleware,
+  }));
+}
+
+// slsv mounts a function under a catch-all `path: /<prefix>/{proxy+}`, so API Gateway hands us
+// the sub-path below the mount in pathParameters.proxy (e.g. `/v1/{proxy+}` + request /v1/health
+// → proxy = "health"). Prefer it: routes are written relative to the mount and the prefix lives
+// ONLY in slsv.yml — change the mount, routes inherit it, no file edits. Apps using explicit
+// per-route `http:` entries have no proxy param → full-path match, unchanged.
+// ponytail: keyed on the literal name `proxy` (slsv's `{proxy+}` convention). An explicit route
+// that names a param `{proxy}` would also trip it — rename the catch-all if that ever collides.
+function eventPath(event: LambdaEvent): string {
+  const proxy = event.pathParameters?.proxy;
+  if (proxy != null) return "/" + proxy;
+  return event.rawPath ?? event.path ?? event.requestContext?.http?.path ?? "/";
+}
+
 export function request<TBody = unknown>(
   event: LambdaEvent,
   routePath?: string,
 ): ApiRequest<TBody> {
-  const path = event.rawPath ?? event.path ?? event.requestContext?.http?.path ?? "/";
+  const path = eventPath(event);
   const method = (event.requestContext?.http?.method ?? event.httpMethod ?? "GET").toUpperCase();
   const headers = normalizeHeaders(event.headers);
   const rawBody = decodeBody(event);
@@ -119,7 +144,7 @@ export function request<TBody = unknown>(
 
 export function router(routes: Route[], middleware: Middleware[] = []) {
   return async (event: LambdaEvent): Promise<ApiResponse> => {
-    const path = event.rawPath ?? event.path ?? event.requestContext?.http?.path ?? "/";
+    const path = eventPath(event);
     const method = (event.requestContext?.http?.method ?? event.httpMethod ?? "GET").toUpperCase();
 
     for (const route of routes) {
@@ -134,7 +159,12 @@ export function router(routes: Route[], middleware: Middleware[] = []) {
         return await compose(chain, req, () => route.handler(req));
       } catch (error) {
         if (error instanceof InvalidJsonError) return json({ error: "Invalid JSON body" }, 400);
-        return json({ error: "Internal Server Error" }, 500);
+        // Surface the real error: log it (dev tail + CloudWatch) and return it in the body.
+        // ponytail: detail is always returned, incl. real AWS — leaks internals to callers.
+        // Gate on process.env.AWS_ENDPOINT_URL (local-only) if you need prod to stay generic.
+        console.error(error);
+        const detail = error instanceof Error ? error.message : String(error);
+        return json({ error: "Internal Server Error", detail }, 500);
       }
     }
 

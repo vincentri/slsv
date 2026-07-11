@@ -50,7 +50,7 @@ const MIME: Record<string, string> = {
 function walkDir(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile())
-    .map((e) => join(e.parentPath ?? e.path, e.name));
+    .map((e) => join(e.parentPath, e.name));
 }
 
 function runBuild(frontend: FrontendDef, cwd: string, apiUrl?: string) {

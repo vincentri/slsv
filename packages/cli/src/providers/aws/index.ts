@@ -5,13 +5,14 @@ import { makeClients, type Clients } from "./clients.js";
 
 export type FunctionOutput = { name: string; arn: string };
 import { ensureExecRole, deleteExecRole } from "./iam.js";
-import { ensureLogGroup, deleteLogGroup } from "./logs.js";
+import { ensureLogGroup, deleteLogGroup, listLambdaLogGroups } from "./logs.js";
 import { ensureDynamoTables } from "./dynamodb.js";
 import { ensureBuckets } from "./s3.js";
 import { ensureQueues, type QueueOutput } from "./sqs.js";
 import { ensureSecrets } from "./secrets.js";
 import { deployFunctions } from "./functions.js";
 import { ensureApiGateway, deleteHttpApi } from "./apigw.js";
+import { ensureApiDomain, destroyApiDomain } from "./domain.js";
 import { ensureCronTriggers, ensureEventTriggers } from "./eventbridge.js";
 import { ensureEventSourceMappings } from "./eventsource.js";
 import { tailLogs } from "./logs-tail.js";
@@ -142,6 +143,14 @@ export class AwsProvider {
     const pfx = `${appName}-`;
     const lcPfx = pfx.toLowerCase();
 
+    // Custom domain (aws-only) — delete before the API so the mapping goes with it; also
+    // removes the public CNAME. yml-driven (needs the domain + dns config), unlike the rest.
+    if (this.target === "aws" && cfg.api?.domain) {
+      await step("API custom domain", () =>
+        destroyApiDomain(this.clients.apigw, this.clients.acm, cfg.api!),
+      );
+    }
+
     // API Gateway (deletes its routes/integrations/stages too)
     await step("API Gateway", () =>
       deleteHttpApi(this.clients.apigw, appName).then(() => undefined),
@@ -161,6 +170,13 @@ export class AwsProvider {
           .send(new DeleteFunctionCommand({ FunctionName: fnName }))
           .then(() => undefined),
       );
+    }
+
+    // Log groups — DISCOVERY-based (not keyed off the functions above), so it also sweeps ORPHAN
+    // groups whose Lambda was already deleted (a pruned fn, or a partial prior destroy). Covers
+    // the live functions' groups too, since slsv creates `/aws/lambda/<app>-<stage>-<fn>` on deploy.
+    for (const lg of await listLambdaLogGroups(this.clients.logs, pfx)) {
+      const fnName = lg.replace("/aws/lambda/", "");
       await step(`Log group ${fnName}`, () =>
         deleteLogGroup(this.clients.logs, fnName).then(() => undefined),
       );
@@ -686,6 +702,17 @@ export class AwsProvider {
       this.target === "local",
       corsOrigins,
     );
+  }
+
+  // Custom domain for the HTTP API. aws-only — Floci has no ACM/custom-domain API, so local
+  // deploys keep the execute-api URL. Runs after wireHttp so the API exists to map onto.
+  async wireApiDomain(
+    api: AppConfig["api"],
+    appName: string,
+  ): Promise<string | undefined> {
+    if (this.target !== "aws" || !api?.domain) return undefined;
+    console.log("→ API custom domain");
+    return ensureApiDomain(this.clients.apigw, this.clients.acm, api, appName);
   }
 
   async wireQueues(functions: AppConfig["functions"], fnOutputs: Record<string, FunctionOutput>) {

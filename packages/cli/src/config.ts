@@ -14,16 +14,16 @@ const FunctionConfig = z.object({
   http: z.array(HttpRoute).optional(),
   queue: z.object({ name: z.string() }).optional(),
   cron: z.object({ schedule: z.string() }).optional(),
-  event: z.object({ pattern: z.record(z.any()) }).optional(), // EventBridge event-pattern trigger
+  event: z.object({ pattern: z.record(z.string(), z.any()) }).optional(), // EventBridge event-pattern trigger
   timeout: z.number().int().min(1).max(900).optional(), // seconds (Lambda hard limit 900)
   memory: z.number().int().min(128).max(10240).optional(), // MB, 1MB steps
-  environment: z.record(z.string()).optional(), // custom env vars (bindings still win)
+  environment: z.record(z.string(), z.string()).optional(), // custom env vars (bindings still win)
   architecture: z.enum(["x86_64", "arm64"]).optional(), // default arm64 (cheaper + faster)
   ephemeralStorage: z.number().int().min(512).max(10240).optional(), // /tmp size MB (default 512)
   tracing: z.boolean().optional(), // X-Ray active tracing
   reservedConcurrency: z.number().int().min(0).optional(), // cap concurrent executions
   provisionedConcurrency: z.number().int().min(1).optional(), // pre-warmed instances (aws only, via `live` alias)
-});
+}).strict(); // reject unknown keys — else a misplaced field (e.g. top-level `api.domain` put here) is silently dropped
 
 const QueueConfig = z.object({
   type: z.enum(["sqs"]),
@@ -97,19 +97,28 @@ const ApiConfig = z.object({
   // today's default — needed for the S3-hosted frontend on a different origin). Set to your
   // site(s) to lock it down, e.g. ['https://myapp.com']. Methods/headers stay '*'.
   cors: z.array(z.string()).optional(),
-});
+  // Custom domain for the HTTP API (aws-only; ignored on --target local). slsv provisions it
+  // end-to-end: ACM cert (DNS-validated) + regional custom domain + API mapping + the public
+  // CNAME — no manual DNS. slsv writes the DNS via Cloudflare (token from env
+  // CLOUDFLARE_API_TOKEN) and finds the owning zone from the domain itself. Cert lives in the
+  // API's deploy region (regional endpoint). Set `certArn` to reuse a cert you already have in
+  // ACM (e.g. a wildcard) instead of slsv minting one.
+  domain: z.string().optional(),
+  certArn: z.string().optional(),
+}).strict();
 
-const AppConfig = z.object({
+const AppConfig = z
+  .object({
   app: z.string(),
-  functions: z.record(FunctionConfig).optional(),
+  functions: z.record(z.string(), FunctionConfig).optional(),
   api: ApiConfig.optional(),
-  queues: z.record(QueueConfig).optional(),
-  buckets: z.record(BucketConfig).optional(),
-  databases: z.record(DatabaseConfig).optional(),
-  caches: z.record(CacheConfig).optional(),
+  queues: z.record(z.string(), QueueConfig).optional(),
+  buckets: z.record(z.string(), BucketConfig).optional(),
+  databases: z.record(z.string(), DatabaseConfig).optional(),
+  caches: z.record(z.string(), CacheConfig).optional(),
   secrets: z.array(z.string()).optional(),
   frontend: FrontendConfig.optional(),
-  tags: z.record(z.string()).optional(), // custom tags merged onto every resource
+  tags: z.record(z.string(), z.string()).optional(), // custom tags merged onto every resource
   // On deploy, reconcile prunes resources dropped from the yml. Default FALSE (safe): data
   // stores (DynamoDB/S3/RDS) orphaned by a yml edit are REPORTED and left until `slsv destroy`.
   // Set true to DELETE them (with their data) on deploy — destructive, opt-in. (Lambda/
@@ -129,7 +138,8 @@ const AppConfig = z.object({
       ],
     )
     .optional(),
-});
+  })
+  .strict(); // top-level: catch misspelled blocks (`function:` vs `functions:`). `stages` is stripped before parse.
 
 export type AppConfig = z.infer<typeof AppConfig>;
 export type DynamoDbDef = z.infer<typeof DynamoDbConfig>;

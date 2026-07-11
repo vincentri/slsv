@@ -3,7 +3,7 @@ app: demo
 functions:
   api:
     runtime: nodejs22
-    handler: ./backend/api.handler
+    handler: ./backend/routes/route.handler
     http:
       - method: ANY
         path: /api/{proxy+}

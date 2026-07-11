@@ -1,4 +1,5 @@
 import { readFileSync, existsSync, readdirSync } from "fs";
+import { spawnSync } from "child_process";
 import path from "path";
 import type { AppConfig } from "./config.js";
 import { ConfigError } from "./config.js";
@@ -114,6 +115,25 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
     throw new ConfigError(
       `slsv.yml does not match code (${errors.length}):\n${errors.map((e) => `  ✗ ${e}`).join("\n")}`,
     );
+
+  // --- Check 4: typecheck. esbuild bundles an undefined identifier (a `gettt` typo) without
+  // complaint, so it only blows up at Lambda module-load — which Floci surfaces as a silent
+  // HANG, not an error. tsc catches it here, before the code is ever pushed. ---
+  const tsErr = typecheck(cwd);
+  if (tsErr) throw new ConfigError(`type check failed:\n${tsErr}`);
+}
+
+// Run the app's own tsc (--noEmit) so a type error fails deploy/reload instead of hanging on
+// Floci. Skips (returns null) when the app has no tsconfig or no local typescript — nothing to
+// run. ponytail: cold tsc adds ~1-2s per reload; add `--incremental` + a cached tsbuildinfo if
+// that lag bites on a large app.
+function typecheck(cwd: string): string | null {
+  const tsconfig = path.join(cwd, "tsconfig.json");
+  const tscBin = path.join(cwd, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc");
+  if (!existsSync(tsconfig) || !existsSync(tscBin)) return null;
+  const r = spawnSync(tscBin, ["--noEmit", "-p", tsconfig], { cwd, encoding: "utf8" });
+  if (r.status === 0) return null;
+  return (r.stdout || r.stderr || "tsc exited non-zero").trim();
 }
 
 // Parse `import { db, queue as q } from '@slsv/sdk'` → Map(local -> accessor). Only accessors

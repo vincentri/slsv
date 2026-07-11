@@ -52,8 +52,18 @@ api: # optional — HTTP API Gateway settings
   cors:
     - https://myapp.com
     - https://www.myapp.com
-  # Custom domain (api.myapp.com) is NOT yet supported by slsv — set it up manually in AWS
-  # (ACM cert + API Gateway custom domain name + DNS record), or use frontend.cloudfront.
+  # Custom domain for the API (aws-only). slsv does EVERYTHING: ACM cert (DNS-validated),
+  # regional API Gateway custom domain, API mapping, and the public DNS record. Zero manual DNS.
+  # You supply exactly two things:
+  #   1. domain below — the hostname you want.
+  #   2. a Cloudflare API token in .env  →  CLOUDFLARE_API_TOKEN=...
+  #      (dash.cloudflare.com → My Profile → API Tokens; permission: Zone.DNS Edit). It's a
+  #      secret, so it lives in .env, never in this file.
+  # slsv finds the Cloudflare zone that owns the domain on its own — no zone/id to look up.
+  # DNS provider is Cloudflare only for now (Route53 support is planned).
+  domain: api.myapp.com
+  # certArn: arn:aws:acm:...:certificate/xxx   # rare — reuse an existing ACM cert instead of
+  #                                            #        slsv minting one (e.g. a wildcard)
 
 queues:
   jobs:

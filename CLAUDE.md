@@ -311,10 +311,52 @@ kept (not OAC-private) since it's the existing setup. Deploy and destroy each ta
 `destroyDistribution`). CloudFront's client always targets `us-east-1` (global service),
 regardless of the app's deploy region (`clients.ts`).
 
+### API custom domain (`api.domain`, aws-only)
+
+Point a real domain (`api.myapp.com`) at the HTTP API, provisioned **end-to-end, zero manual
+DNS** (`providers/aws/domain.ts`: `ensureApiDomain`/`destroyApiDomain`). User config is a single
+field — `api.domain` — plus a `CLOUDFLARE_API_TOKEN` in env (Zone.DNS edit). Because the only
+manual step in a custom domain is the DNS validation record, slsv writes DNS itself via the
+provider's API — today **Cloudflare only** (`providers/aws/cloudflare.ts`, plain `fetch`, no SDK).
+No zone field: `cfZoneIdForDomain` lists the token's zones and picks the one whose name is a suffix
+of the domain (longest match — `api.myapp.com` → zone `myapp.com`). Flow on `--target aws`:
+`RequestCertificate` (DNS-validated ACM cert) → auto-write the validation CNAME in Cloudflare →
+poll `DescribeCertificate` to `ISSUED` (~1-5 min) → `CreateDomainName` (**REGIONAL**, `TLS_1_2`) →
+`CreateApiMapping` onto the app's `$default` stage → upsert the public CNAME → the api-gw target
+(`d-xxx.execute-api…`, DNS-only/unproxied). Idempotent throughout (reuse existing
+cert/domain-name/mapping). The cert **must be in the API's deploy region** (regional endpoint) — so
+`clients.acm` tracks the app region, NOT the us-east-1 CloudFront uses. `api.certArn` skips ACM
+(reuse a pre-validated cert, e.g. a wildcard). Deploy wires it in `deploy.ts` after `wireHttp` and,
+when set, **replaces `apiUrl`** so the frontend build gets the custom domain injected
+(`VITE_SLSV_API_URL`). Skipped on `--target local` (Floci has no ACM/custom-domain API). Destroy is
+**yml-driven** (needs the domain config in the yml, unlike the discovery-based rest — so keep
+`api.domain` in slsv.yml when you destroy, else the domain isn't touched) and does **FULL cleanup,
+nothing left behind**: `DeleteDomainName` (cascades the mapping) → `DeleteCertificate` (the
+slsv-minted ACM cert) → delete **both** Cloudflare records (public CNAME + the ACM validation
+CNAME). A **BYO `certArn`** and its validation record are **left** (the user's, not slsv's to
+delete). Order matters: domain name is deleted first so ACM releases the cert; the validation
+record name is captured (via `DescribeCertificate`) before the cert is gone. **Two teardown
+gotchas, both fixed — do not regress:** (a) **destroy must load `.env`** (the `cli.ts` destroy
+action runs `dotenv` like deploy) so `CLOUDFLARE_API_TOKEN` is present — without it, DNS cleanup was
+silently skipped and every Cloudflare record survived while the step printed a **lying `✓`**. (b)
+`DeleteCertificate` **races the domain-name release** (API GW frees the cert only eventually,
+seconds–minutes) → a one-shot delete hits `ResourceInUseException`; `deleteCertWhenFree`
+**retries ~18×/10s** until it frees. Cleanup is **NOT swallow-and-continue**: a missing token or a
+stuck-in-use cert **throws** so the destroy step prints `✗` + exits non-zero instead of falsely
+reporting done (only "already gone"/NotFound counts as success). ponytail ceilings: (1) Cloudflare
+only — Route53/other DNS = a future `dns.provider` field (dropped for now; `api.domain` alone
+implies Cloudflare); (2) `cfZoneIdForDomain` reads one page (`per_page=50`) — paginate if a token
+fronts >50 zones; (3) create-only for the domain config (a cert/endpoint-type change needs
+destroy+redeploy, same as CloudFront); (4) apex domains work but Cloudflare CNAME-flattening is on
+the user; (5) shares one domain/stage — multi-stage on one domain (`api-prod`/`api-dev`) is the
+user's naming job.
+
 `slsv destroy [--stage] [--target local|aws]` tears the stack down. **Discovery-based, NOT
 yml-driven:** destroy ENUMERATES every resource deployed under the `<app>-<stage>-` prefix
 (`ListFunctions`/`ListTables`/`ListBuckets`/`ListQueues`/`ListSecrets`/
-`DescribeReplicationGroups`+`DescribeServerlessCaches`/`DescribeDBInstances`, all `paginate()`d)
+`DescribeReplicationGroups`+`DescribeServerlessCaches`/`DescribeDBInstances`/`DescribeLogGroups`,
+all `paginate()`d — log groups swept by `/aws/lambda/<prefix>` discovery, `listLambdaLogGroups`,
+so an orphan group whose Lambda is already gone is deleted too)
 and deletes what it finds — so a resource the user already **removed from slsv.yml** (yml drifted
 from AWS) is STILL torn down. (Before: destroy iterated `cfg.functions`/`cfg.databases`/… — a
 service dropped from the yml was invisible to destroy and survived on real AWS: "my lambda and
@@ -390,7 +432,7 @@ functions:
     reservedConcurrency?: 10 # PutFunctionConcurrency (separate call); 0 throttles all
     provisionedConcurrency?: 2 # warm instances (--target aws only); publishes a version + `live` alias, triggers point at the alias
     environment?: { KEY: value } # custom env; slsv bindings (DATABASE_*, etc) always win
-api: { cors?: [origin, ...] } # optional; HTTP API CORS AllowOrigins (omit → '*'). Methods/headers always '*'. Custom domain NOT yet supported (manual: ACM + API GW custom domain + DNS)
+api: { cors?: [origin, ...], domain?, certArn? } # cors: HTTP API CORS AllowOrigins (omit → '*'). domain: custom API domain, aws-only, provisioned end-to-end — ACM DNS-validated cert (deploy region, NOT us-east-1) + regional custom domain + API mapping + public CNAME, zero manual DNS; slsv writes DNS via Cloudflare (env CLOUDFLARE_API_TOKEN) and auto-finds the owning zone from the domain; certArn reuses an existing cert. See "API custom domain" below
 queues: { name: { type: sqs, fifo?: bool, visibilityTimeout?: secs, dlq?: name } }
 buckets: {
     name: {},

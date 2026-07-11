@@ -20,7 +20,22 @@ describe("initScaffold", () => {
     const yml = readFileSync(path.join(tmp, "myapp", "slsv.yml"), "utf-8");
     expect(yml).toMatch(/app: myapp/);
     expect(yml).toMatch(/functions:/);
-    expect(existsSync(path.join(tmp, "myapp", "backend", "api.ts"))).toBe(true);
+    expect(existsSync(path.join(tmp, "myapp", "backend", "routes", "route.ts"))).toBe(true);
+  });
+
+  it("scaffolds the api-db template wired to an external Postgres", () => {
+    initScaffold("dbapp", tmp, "api-db", "backend");
+    const app = path.join(tmp, "dbapp");
+    const yml = readFileSync(path.join(app, "slsv.yml"), "utf-8");
+    expect(yml).toMatch(/app: dbapp/);
+    expect(yml).toMatch(/secrets:/);
+    expect(yml).toMatch(/DATABASE_URL/);
+    expect(existsSync(path.join(app, "drizzle.config.ts"))).toBe(true);
+    expect(existsSync(path.join(app, "backend", "database", "index.ts"))).toBe(true);
+    expect(existsSync(path.join(app, "backend", "database", "schema.ts"))).toBe(true);
+    expect(readFileSync(path.join(app, "package.json"), "utf-8")).toMatch(/drizzle-orm/);
+    // backend-only: no frontend scaffolded
+    expect(existsSync(path.join(app, "frontend"))).toBe(false);
   });
 
   it("writes slsv.yml for frontend stack without functions", () => {
