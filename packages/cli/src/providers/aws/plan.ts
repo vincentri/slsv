@@ -10,6 +10,7 @@ import { ListSecretsCommand } from "@aws-sdk/client-secrets-manager";
 import { DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 import { DescribeReplicationGroupsCommand } from "@aws-sdk/client-elasticache";
 import type { AppConfig } from "../../config.js";
+import { dlqName } from "../../config.js";
 import type { Clients } from "./clients.js";
 import { paginate } from "./index.js";
 
@@ -212,13 +213,18 @@ export function classify(
   );
 
   // --- SQS (presence; fifo flips the name so a fifo change surfaces as delete+create) ---
-  diff(
-    "queue",
-    new Map(
-      Object.entries(cfg.queues ?? {}).map(([n, q]) => [`${pfx}${n}${q.fifo ? ".fifo" : ""}`, n]),
-    ),
-    live.queues,
-  );
+  // Auto-provisioned DLQs (`dlq: true` → `<name>Failed`, or any named `dlq:` not declared as its
+  // own queue) are added to the expected set so plan doesn't flag a queue slsv itself created as
+  // an orphan. FIFO suffix mirrored from the source (AWS requires main + DLQ to match on FIFO).
+  const wantQueues = new Map<string, string>();
+  for (const [n, q] of Object.entries(cfg.queues ?? {})) {
+    const suffix = q.fifo ? ".fifo" : "";
+    wantQueues.set(`${pfx}${n}${suffix}`, n);
+    const dlq = dlqName(n, q.dlq);
+    if (dlq && !(dlq in (cfg.queues ?? {})))
+      wantQueues.set(`${pfx}${dlq}${suffix}`, `${n} (auto-DLQ)`);
+  }
+  diff("queue", wantQueues, live.queues);
 
   // --- Secrets (presence) ---
   diff(

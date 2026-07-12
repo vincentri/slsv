@@ -106,4 +106,27 @@ describe("classify", () => {
     );
     expect(r.changes).toHaveLength(0);
   });
+
+  it("does NOT orphan an auto-provisioned DLQ (`dlq: true`)", () => {
+    const r = classify(
+      cfg({ queues: { jobs: { type: "sqs", dlq: true } as any } }),
+      "dev",
+      { ...EMPTY, queues: ["shop-dev-jobs", "shop-dev-jobsFailed"] },
+    );
+    expect(r.changes).toHaveLength(0);
+  });
+
+  it("does NOT orphan a named DLQ auto-provisioned by slsv (not declared in yml)", () => {
+    const r = classify(
+      cfg({ queues: { jobs: { type: "sqs", dlq: "myDlq" } as any } }),
+      "dev",
+      { ...EMPTY, queues: ["shop-dev-jobs", "shop-dev-myDlq"] },
+    );
+    expect(r.changes).toHaveLength(0);
+  });
+
+  it("orphans a queue slsv never created (genuinely stray)", () => {
+    const r = classify(cfg({}), "dev", { ...EMPTY, queues: ["shop-dev-stranger"] });
+    expect(find(r, "queue", "stranger")?.action).toBe("orphan");
+  });
 });
