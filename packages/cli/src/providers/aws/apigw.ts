@@ -17,6 +17,7 @@ import {
 } from "@aws-sdk/client-apigatewayv2";
 import { AddPermissionCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import type { AppConfig } from "../../config.js";
+import { ConfigError } from "../../config.js";
 import type { AwsFnOutput } from "./functions.js";
 import { arnRegionAccount } from "./eventbridge.js";
 
@@ -31,6 +32,7 @@ export async function deleteHttpApi(apigw: ApiGatewayV2Client, appName: string):
 }
 
 type AuthConfig = NonNullable<AppConfig["api"]>["auth"];
+type CorsConfig = NonNullable<AppConfig["api"]>["cors"];
 
 export async function ensureApiGateway(
   apigw: ApiGatewayV2Client,
@@ -39,13 +41,13 @@ export async function ensureApiGateway(
   outputs: Record<string, AwsFnOutput>,
   appName: string,
   isLocal: boolean,
-  corsOrigins?: string[],
+  cors?: CorsConfig,
   auth?: AuthConfig,
 ): Promise<string | undefined> {
   const httpFunctions = Object.entries(functions).filter(([, fn]) => fn.http?.length);
   if (httpFunctions.length === 0) return undefined;
 
-  const api = await ensureHttpApi(apigw, appName, corsOrigins);
+  const api = await ensureHttpApi(apigw, appName, cors);
   if (!api.ApiId) throw new Error(`API Gateway HTTP API for ${appName} is missing an id`);
 
   await ensureStage(apigw, api.ApiId);
@@ -88,17 +90,40 @@ export async function ensureApiGateway(
   return `${FLOCI_ENDPOINT}/execute-api/${api.ApiId}/$default`;
 }
 
-async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string, corsOrigins?: string[]) {
-  // CORS so the S3-hosted frontend (different origin) can call the API. Default `*` (permissive,
-  // required when frontend + API are separate origins); `api.cors` in slsv.yml locks AllowOrigins
-  // to specific sites. Methods/headers stay `*` — origin is the axis worth restricting.
-  const cors = { AllowOrigins: corsOrigins ?? ["*"], AllowMethods: ["*"], AllowHeaders: ["*"] };
+// Normalize `api.cors` (false | origins array | full object | undefined) into an API Gateway
+// CorsConfiguration. Default `*` (permissive — the S3-hosted frontend is a different origin).
+// `false` → null: no gateway CORS at all (handler owns it). `credentials: true` is incompatible
+// with `*` on origin/methods/headers (browsers reject it), so it forces explicit origins and
+// swaps `*` methods/headers for concrete defaults.
+function buildCors(cors?: CorsConfig) {
+  if (cors === false) return null;
+  if (!cors) return { AllowOrigins: ["*"], AllowMethods: ["*"], AllowHeaders: ["*"] };
+  if (Array.isArray(cors)) return { AllowOrigins: cors, AllowMethods: ["*"], AllowHeaders: ["*"] };
+
+  const credentials = cors.credentials ?? false;
+  if (credentials && cors.origins.includes("*")) {
+    throw new ConfigError(
+      "api.cors.credentials requires explicit origins — browsers reject 'Access-Control-Allow-Origin: *' on credentialed requests. List your site(s) in api.cors.origins.",
+    );
+  }
+  return {
+    AllowOrigins: cors.origins,
+    AllowMethods: cors.methods ?? (credentials ? ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] : ["*"]),
+    AllowHeaders: cors.headers ?? (credentials ? ["content-type", "authorization"] : ["*"]),
+    // Only set when true — `AllowCredentials: false` + no field are equivalent, keeps the diff clean.
+    ...(credentials ? { AllowCredentials: true } : {}),
+  };
+}
+
+async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string, corsConfig?: CorsConfig) {
+  const cors = buildCors(corsConfig);
 
   const existing = await apigw.send(new GetApisCommand({}));
   const found = existing.Items?.find((api) => api.Name === appName);
   if (found) {
-    // Ensure CORS on an API created before this was added.
-    await apigw.send(new UpdateApiCommand({ ApiId: found.ApiId, CorsConfiguration: cors }));
+    // Converge CORS every deploy. `cors === null` means disabled (`api.cors: false`) — send an
+    // empty CorsConfiguration to CLEAR any config a prior deploy set (AWS removes CORS on empty).
+    await apigw.send(new UpdateApiCommand({ ApiId: found.ApiId, CorsConfiguration: cors ?? {} }));
     return found;
   }
 
@@ -106,7 +131,8 @@ async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string, corsOri
     new CreateApiCommand({
       Name: appName,
       ProtocolType: "HTTP",
-      CorsConfiguration: cors,
+      // Omit entirely when disabled so the API is created without CORS.
+      ...(cors ? { CorsConfiguration: cors } : {}),
     }),
   );
 }

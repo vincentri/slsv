@@ -689,7 +689,7 @@ export class AwsProvider {
     functions: AppConfig["functions"],
     fnOutputs: Record<string, FunctionOutput>,
     appName: string,
-    corsOrigins?: string[],
+    cors?: NonNullable<AppConfig["api"]>["cors"],
     auth?: NonNullable<AppConfig["api"]>["auth"],
   ): Promise<string | undefined> {
     if (!functions || !Object.values(functions).some((f) => f.http?.length)) return undefined;
@@ -701,7 +701,7 @@ export class AwsProvider {
       fnOutputs,
       appName,
       this.target === "local",
-      corsOrigins,
+      cors,
       auth,
     );
   }

@@ -84,6 +84,45 @@ describe("api custom domain config", () => {
   });
 });
 
+describe("api cors config", () => {
+  let tmp: string;
+  const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);
+  beforeEach(() => {
+    tmp = path.join(os.tmpdir(), `slsv-cors-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmp, { recursive: true });
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it("accepts the legacy origins-array shape", () => {
+    write(`app: shop\napi:\n  cors: ["https://myapp.com"]\n`);
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.api!.cors).toEqual(["https://myapp.com"]);
+  });
+
+  it("accepts the object shape with credentials", () => {
+    write(
+      `app: shop\napi:\n  cors:\n    origins: ["https://myapp.com"]\n    credentials: true\n    methods: ["GET", "POST"]\n`,
+    );
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.api!.cors).toEqual({
+      origins: ["https://myapp.com"],
+      credentials: true,
+      methods: ["GET", "POST"],
+    });
+  });
+
+  it("accepts cors: false (gateway CORS disabled)", () => {
+    write(`app: shop\napi:\n  cors: false\n`);
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.api!.cors).toBe(false);
+  });
+
+  it("rejects unknown keys in the object shape", () => {
+    write(`app: shop\napi:\n  cors:\n    origins: ["https://myapp.com"]\n    creds: true\n`);
+    expect(() => loadConfig(tmp, "dev")).toThrow(ConfigError);
+  });
+});
+
 describe("api auth (Lambda authorizer) config", () => {
   let tmp: string;
   const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);

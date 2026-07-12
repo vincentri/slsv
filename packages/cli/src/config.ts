@@ -99,10 +99,33 @@ const BucketConfig = z
   .strict();
 
 const ApiConfig = z.object({
-  // Origins allowed to call the HTTP API from a browser (CORS AllowOrigins). Omit → '*' (open,
-  // today's default — needed for the S3-hosted frontend on a different origin). Set to your
-  // site(s) to lock it down, e.g. ['https://myapp.com']. Methods/headers stay '*'.
-  cors: z.array(z.string()).optional(),
+  // CORS for the HTTP API. Two shapes:
+  //   cors: ['https://myapp.com']                       # origins only (methods/headers stay '*')
+  //   cors: { origins: [...], methods?, headers?, credentials? }   # full control
+  // Omit → '*' (open — needed for the S3-hosted frontend on a different origin). `credentials:
+  // true` (needed for `fetch(..., { credentials: 'include' })` — cookies / auth) forces explicit
+  // origins: browsers REJECT `Access-Control-Allow-Origin: *` on a credentialed request, so
+  // `origins` must not contain '*', and methods/headers default to concrete lists (not '*',
+  // which is also invalid with credentials). See "Frontend → API wiring".
+  // `false` disables API Gateway CORS entirely (no CorsConfiguration) — use when the handler
+  // sets its own CORS headers (e.g. credentialed cookie auth via @slsv/sdk middleware). Without
+  // this, gateway CORS + handler CORS both emit Access-Control-Allow-Origin → duplicate header →
+  // browsers reject. Disabling it also lets OPTIONS reach an `ANY` route so the handler can
+  // answer preflight itself.
+  cors: z
+    .union([
+      z.literal(false),
+      z.array(z.string()),
+      z
+        .object({
+          origins: z.array(z.string()),
+          methods: z.array(z.string()).optional(),
+          headers: z.array(z.string()).optional(),
+          credentials: z.boolean().optional(),
+        })
+        .strict(),
+    ])
+    .optional(),
   // Custom domain for the HTTP API (aws-only; ignored on --target local). slsv provisions it
   // end-to-end: ACM cert (DNS-validated) + regional custom domain + API mapping + the public
   // CNAME — no manual DNS. slsv writes the DNS via Cloudflare (token from env

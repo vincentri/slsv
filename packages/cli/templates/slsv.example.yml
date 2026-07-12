@@ -51,12 +51,21 @@ functions:
     handler: ./src/auth.handler        #   Return { isAuthorized: bool, context? } — deny → 403.
 
 api: # optional — HTTP API Gateway settings
-  # Origins allowed to call the API from a browser (CORS AllowOrigins). Omit this whole block
-  # → '*' (open; required when the S3-hosted frontend is a different origin). Set it to lock
-  # the API to your own site(s). Methods + headers stay '*'. Applied every deploy (drift-safe).
+  # CORS for the API. Omit this whole block → '*' (open; required when the S3-hosted frontend
+  # is a different origin). Two shapes:
+  #   (a) array of origins — locks AllowOrigins, methods/headers stay '*':
   cors:
     - https://myapp.com
     - https://www.myapp.com
+  #   (b) object — full control. Use `credentials: true` if the browser sends cookies / an
+  #       Authorization credential via `fetch(url, { credentials: 'include' })`. Credentials
+  #       CANNOT combine with '*' (browsers reject it), so origins must be explicit and
+  #       methods/headers default to concrete lists (override below if you need more):
+  # cors:
+  #   origins: ["https://myapp.com"]
+  #   credentials: true
+  #   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]   # optional
+  #   headers: ["content-type", "authorization"]                     # optional
   # Custom domain for the API (aws-only). slsv does EVERYTHING: ACM cert (DNS-validated),
   # regional API Gateway custom domain, API mapping, and the public DNS record. Zero manual DNS.
   # You supply exactly two things:
