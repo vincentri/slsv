@@ -7,7 +7,8 @@ import {
 import type { AppConfig } from "../../config.js";
 import { dlqName } from "../../config.js";
 
-export type QueueOutput = { url: string; arn: string };
+// createdAt: epoch seconds — lets the ESM wiring detect a recreated queue (see eventsource.ts).
+export type QueueOutput = { url: string; arn: string; createdAt?: number };
 
 const DEFAULT_MAX_RECEIVE_COUNT = 5;
 
@@ -62,12 +63,13 @@ export async function ensureQueues(
     const a = await sqs.send(
       new GetQueueAttributesCommand({
         QueueUrl: queueUrl,
-        AttributeNames: ["QueueArn"],
+        AttributeNames: ["QueueArn", "CreatedTimestamp"],
       }),
     );
     const arn = a.Attributes!.QueueArn!;
+    const createdAt = Number(a.Attributes!.CreatedTimestamp) || undefined;
 
-    created[name] = { url: queueUrl, arn, ...q };
+    created[name] = { url: queueUrl, arn, createdAt, ...q };
   }
 
   // Pass 2: attach RedrivePolicy now that every queue (incl. DLQ targets) exists.
@@ -91,7 +93,7 @@ export async function ensureQueues(
   }
 
   for (const [name, q] of Object.entries(created)) {
-    outputs[name] = { url: q.url, arn: q.arn };
+    outputs[name] = { url: q.url, arn: q.arn, createdAt: q.createdAt };
   }
   return outputs;
 }
