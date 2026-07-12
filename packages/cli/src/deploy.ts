@@ -25,7 +25,12 @@ export async function deploy(
   mode: "deploy" | "dev" = "deploy",
   stage = "dev",
 ): Promise<DeployOutputs> {
-  // Stage-specific .env wins; dotenv never overwrites already-set keys, so load it first.
+  // Precedence (dotenv never overwrites an already-set key, so first load wins):
+  //   1. .env.local  — local-machine overrides, ONLY on --target local (e.g. `slsv dev`). Never
+  //      sent to the cloud; git-ignore it. Mirrors Vite/Next `.env.local`.
+  //   2. .env.<stage> — per-stage values.
+  //   3. .env         — shared defaults.
+  if (provider.target === "local") dotenv({ path: path.join(cwd, ".env.local") });
   dotenv({ path: path.join(cwd, `.env.${stage}`) });
   dotenv({ path: path.join(cwd, ".env") });
   // Every resource is namespaced by stage so dev/prod stacks coexist in one account.
@@ -70,7 +75,7 @@ export async function deploy(
     if (Object.keys(functions).length) console.log("→ Functions");
     const fnOutputs = await provider.deployFunctions(functions, prefix, allEnvs, cwd);
     [apiUrl] = await Promise.all([
-      provider.wireHttp(functions, fnOutputs, prefix, cfg.api?.cors),
+      provider.wireHttp(functions, fnOutputs, prefix, cfg.api?.cors, cfg.api?.auth),
       provider.wireQueues(functions, fnOutputs),
       provider.wireCron(functions, fnOutputs, prefix),
     ]);

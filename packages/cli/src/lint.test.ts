@@ -39,6 +39,30 @@ describe("lintApp", () => {
     expect(() => lintApp(cfg, tmp)).not.toThrow();
   });
 
+  it("errors when api.auth.function is not a declared function", () => {
+    write("src/api.ts", `export const handler = async () => ({})`);
+    const cfg = {
+      app: "x",
+      functions: { api: fn("./src/api.handler", { http: [{ method: "GET", path: "/" }] }) },
+      api: { auth: { function: "authorizer" } },
+    } as unknown as AppConfig;
+    expect(() => lintApp(cfg, tmp)).toThrow(/api\.auth\.function 'authorizer' is not declared/);
+  });
+
+  it("passes when api.auth.function names a declared trigger-less fn", () => {
+    write("src/api.ts", `export const handler = async () => ({})`);
+    write("src/auth.ts", `export const handler = async () => ({ isAuthorized: true })`);
+    const cfg = {
+      app: "x",
+      functions: {
+        api: fn("./src/api.handler", { http: [{ method: "GET", path: "/" }] }),
+        authorizer: fn("./src/auth.handler"),
+      },
+      api: { auth: { function: "authorizer" } },
+    } as unknown as AppConfig;
+    expect(() => lintApp(cfg, tmp)).not.toThrow();
+  });
+
   it("errors on missing handler file", () => {
     const cfg = { app: "x", functions: { api: fn("./src/ghost.handler") } } as unknown as AppConfig;
     expect(() => lintApp(cfg, tmp)).toThrow(ConfigError);
@@ -118,6 +142,35 @@ describe("lintApp", () => {
     } as unknown as AppConfig;
     expect(() => lintApp(cfg, tmp)).not.toThrow();
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/secret 'UNUSED'.*never used/));
+    warn.mockRestore();
+  });
+
+  it("does not warn on a queue used only as a DLQ target", () => {
+    write("src/api.ts", `export const handler = async () => 1`);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cfg = {
+      app: "x",
+      functions: { api: fn("./src/api.handler") },
+      queues: {
+        main: { type: "sqs", dlq: "mainFailed" },
+        mainFailed: { type: "sqs" },
+      },
+    } as unknown as AppConfig;
+    expect(() => lintApp(cfg, tmp)).not.toThrow();
+    expect(warn).not.toHaveBeenCalledWith(expect.stringMatching(/queue 'mainFailed'.*never used/));
+    warn.mockRestore();
+  });
+
+  it("does not warn on an auto-named DLQ from `dlq: true` (no separate entry)", () => {
+    write("src/api.ts", `export const handler = async () => 1`);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cfg = {
+      app: "x",
+      functions: { api: fn("./src/api.handler") },
+      queues: { main: { type: "sqs", dlq: true } },
+    } as unknown as AppConfig;
+    expect(() => lintApp(cfg, tmp)).not.toThrow();
+    expect(warn).not.toHaveBeenCalledWith(expect.stringMatching(/queue 'mainFailed'.*never used/));
     warn.mockRestore();
   });
 });

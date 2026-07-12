@@ -34,6 +34,8 @@ functions:
 queues:
   clicks:
     type: sqs
+    dlq: true
+    maxReceiveCount: 3
 
 databases:
   links:

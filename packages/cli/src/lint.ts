@@ -2,7 +2,7 @@ import { readFileSync, existsSync, readdirSync } from "fs";
 import { spawnSync } from "child_process";
 import path from "path";
 import type { AppConfig } from "./config.js";
-import { ConfigError } from "./config.js";
+import { ConfigError, dlqName } from "./config.js";
 
 // Preflight lint run before every dev/deploy: does slsv.yml actually match the code?
 // Three checks — (1) each function's handler file exists and exports the named symbol,
@@ -95,9 +95,17 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
     }
   }
   // Declared but never referenced anywhere in code — likely dead config (warning, not fatal).
+  // DLQ targets aren't called via `queue(name)` in code; they're attached via RedrivePolicy
+  // by another queue's `dlq:` field (incl. auto-named `<name>Failed` when `dlq: true`) —
+  // treat all of those as referenced.
+  const dlqTargets = new Set(
+    Object.entries(cfg.queues ?? {})
+      .map(([name, q]) => dlqName(name, q.dlq))
+      .filter((d): d is string => !!d),
+  );
   for (const accessor of Object.keys(nameSets))
     for (const declared of nameSets[accessor])
-      if (!referenced[accessor].has(declared))
+      if (!referenced[accessor].has(declared) && !(accessor === "queue" && dlqTargets.has(declared)))
         warnings.push(
           `${ACCESSOR_LABEL[accessor]} '${declared}' declared in slsv.yml but never used in code`,
         );
@@ -106,9 +114,13 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
   for (const [name, fn] of Object.entries(cfg.functions ?? {}))
     if (fn.queue && !nameSets.queue.has(fn.queue.name))
       errors.push(`function ${name}: queue trigger '${fn.queue.name}' not declared in queues:`);
-  for (const [name, q] of Object.entries(cfg.queues ?? {}))
-    if (q.dlq && !nameSets.queue.has(q.dlq))
-      errors.push(`queue ${name}: dlq '${q.dlq}' not declared in queues:`);
+  // DLQ targets are auto-provisioned by sqs.ts (`dlq: true` → `<name>Failed`, or any named
+  // string); nothing to validate here.
+
+  // --- Check 3b: api.auth.function names a declared function ---
+  const authFn = cfg.api?.auth?.function;
+  if (authFn && !cfg.functions?.[authFn])
+    errors.push(`api.auth.function '${authFn}' is not declared in functions:`);
 
   for (const w of warnings) console.warn(`⚠ lint: ${w}`);
   if (errors.length)

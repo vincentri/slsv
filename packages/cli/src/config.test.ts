@@ -84,6 +84,44 @@ describe("api custom domain config", () => {
   });
 });
 
+describe("api auth (Lambda authorizer) config", () => {
+  let tmp: string;
+  const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);
+  beforeEach(() => {
+    tmp = path.join(os.tmpdir(), `slsv-apiauth-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmp, { recursive: true });
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it("accepts api.auth + a per-route auth:false opt-out", () => {
+    write(
+      [
+        "app: shop",
+        "functions:",
+        "  api:",
+        "    runtime: nodejs22",
+        "    handler: ./src/api.handler",
+        "    http:",
+        "      - { method: GET, path: /me }",
+        "      - { method: GET, path: /health, auth: false }",
+        "api:",
+        "  auth:",
+        "    function: authorizer",
+        "    ttl: 60",
+        "",
+      ].join("\n"),
+    );
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.api!.auth).toEqual({ function: "authorizer", ttl: 60 });
+    expect(cfg.functions!.api.http![1].auth).toBe(false);
+  });
+
+  it("rejects api.auth without a function", () => {
+    write(`app: shop\napi:\n  auth:\n    ttl: 60\n`);
+    expect(() => loadConfig(tmp, "dev")).toThrow(ConfigError);
+  });
+});
+
 describe("bucket config", () => {
   let tmp: string;
   const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);

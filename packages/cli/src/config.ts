@@ -6,6 +6,9 @@ import path from "path";
 const HttpRoute = z.object({
   method: z.string(),
   path: z.string(),
+  // When `api.auth` is set, every route is protected by default. Set `auth: false` to leave
+  // this one route public (e.g. a health check or a login endpoint).
+  auth: z.boolean().optional(),
 });
 
 const FunctionConfig = z.object({
@@ -29,7 +32,10 @@ const QueueConfig = z.object({
   type: z.enum(["sqs"]),
   fifo: z.boolean().optional(),
   visibilityTimeout: z.number().int().positive().max(43200).optional(),
-  dlq: z.string().optional(),
+  // `true` → auto-provision `<name>Failed` (matching fifo); a string names a custom DLQ,
+  // auto-provisioned if not declared as its own queue. Either way slsv creates the queue.
+  dlq: z.union([z.boolean(), z.string()]).optional(),
+  maxReceiveCount: z.number().int().min(1).max(1000).optional(), // deliveries before DLQ (default 5)
 });
 
 const KeyAttr = z.object({
@@ -105,6 +111,20 @@ const ApiConfig = z.object({
   // ACM (e.g. a wildcard) instead of slsv minting one.
   domain: z.string().optional(),
   certArn: z.string().optional(),
+  // Lambda REQUEST authorizer. When set, EVERY http route is protected (opt a route out with
+  // `auth: false`). `function` names a function (declared in `functions:`, no trigger of its
+  // own) that API Gateway invokes before the route handler; it returns `{ isAuthorized: bool,
+  // context? }` — deny → 403, the route fn is never invoked. The lookup (DB/secret/JWT/…) is
+  // entirely the handler's; slsv only wires the authorizer + invoke permission. `identitySource`
+  // is what API GW reads + caches on (default the Authorization header); `ttl` caches the
+  // allow/deny that many seconds (0 = check every request).
+  auth: z
+    .object({
+      function: z.string(),
+      identitySource: z.array(z.string()).optional(),
+      ttl: z.number().int().min(0).max(3600).optional(),
+    })
+    .optional(),
 }).strict();
 
 const AppConfig = z
@@ -144,6 +164,14 @@ const AppConfig = z
 export type AppConfig = z.infer<typeof AppConfig>;
 export type DynamoDbDef = z.infer<typeof DynamoDbConfig>;
 export type FrontendDef = z.infer<typeof FrontendConfig>;
+
+// Resolve a queue's DLQ logical name. `true` → `${queue}Failed`; a string is returned as-is;
+// absent → undefined. Callers (sqs.ts create, lint.ts unused-check) share this so the derived
+// name stays consistent.
+export function dlqName(queue: string, dlq: boolean | string | undefined): string | undefined {
+  if (dlq === true) return `${queue}Failed`;
+  return typeof dlq === "string" ? dlq : undefined;
+}
 
 // Deep-merge an overlay onto a base: objects merge recursively, arrays/scalars replace,
 // and an explicit `null` in the overlay removes the key (needed to swap e.g. a queue

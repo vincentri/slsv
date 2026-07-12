@@ -59,8 +59,10 @@ genuinely different scaling/memory needs.
 
 ## Secrets & env
 
-- Secrets: names in `secrets:`, values in `.env` / `.env.<stage>` (gitignored). Injected as an
-  SM id, fetched at runtime with `secret('NAME')` — the value never sits in the Lambda env.
+- Secrets: names in `secrets:`, values in `.env` files (gitignored). Injected as an SM id,
+  fetched at runtime with `secret('NAME')` — the value never sits in the Lambda env.
+- Env file precedence (first wins): `.env.local` (local-only, loaded by `slsv dev` — never
+  deployed) → `.env.<stage>` → `.env`. Put local-machine overrides in `.env.local`.
 - Custom env per function: `functions.<fn>.environment: { KEY: value }`.
 
 ## Layout

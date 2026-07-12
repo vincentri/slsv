@@ -83,7 +83,7 @@ export async function paginate<T>(
 const GONE = /(NotFound|NoSuch|DoesNotExist|NonExistent)/i;
 
 export class AwsProvider {
-  private target: "local" | "aws";
+  readonly target: "local" | "aws";
   private clients: Clients;
   private roleArn?: string;
   private tags: Record<string, string> = {};
@@ -690,6 +690,7 @@ export class AwsProvider {
     fnOutputs: Record<string, FunctionOutput>,
     appName: string,
     corsOrigins?: string[],
+    auth?: NonNullable<AppConfig["api"]>["auth"],
   ): Promise<string | undefined> {
     if (!functions || !Object.values(functions).some((f) => f.http?.length)) return undefined;
     console.log("→ API Gateway");
@@ -701,6 +702,7 @@ export class AwsProvider {
       appName,
       this.target === "local",
       corsOrigins,
+      auth,
     );
   }
 

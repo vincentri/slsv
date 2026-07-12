@@ -162,8 +162,10 @@ Every command takes `--stage <name>` (`dev`/`deploy`/`logs`/`destroy`). Stage na
 prod stacks coexist in one account. Single derivation point: `deploy.ts` builds
 `prefix = ${app}-${stage}` and passes it as the `appName` every provider already used — the
 provider files are stage-agnostic. Secrets follow suit (SM secret id `<prefix>-<NAME>`).
-Per-stage secret values load from `.env.<stage>` (falls back to `.env`; stage file wins
-since dotenv never overwrites).
+Env/secret values load in precedence order (dotenv never overwrites an already-set key, so the
+first load wins): **`.env.local`** (only on `--target local`, e.g. `slsv dev` — local-machine
+overrides never sent to the cloud, git-ignored; mirrors Vite/Next) → **`.env.<stage>`** →
+**`.env`**. `provider.target` gates the `.env.local` load in `deploy.ts` (shared by dev+deploy).
 `SLSV_STAGE` is injected into every function. Stage name must match `^[a-z0-9-]+$`.
 (UI inspector still reads unprefixed names — TODO when UI gets stage-aware.)
 
@@ -405,6 +407,34 @@ inside `deployFunctions`; non-provisioned functions stay on `$LATEST` unchanged.
 needs nothing extra — `DeleteFunction` cascades versions/aliases/config. ponytail: warms in
 the background (deploy returns before it's `Ready`); GC keeps only the live version.
 
+### API authorizer (`api.auth`, Lambda REQUEST)
+
+`api.auth` protects the HTTP API with a **Lambda REQUEST authorizer** (`apigw.ts`:
+`ensureAuthorizer`). **Whole-API default** — once `api.auth` is set, EVERY http route gets
+`AuthorizationType: CUSTOM` + the authorizer; a route opts out with `auth: false`
+(`ensureRoute` converges both directions, so adding/removing auth takes effect on redeploy).
+`api.auth.function` names a **trigger-less function** (no http/queue/cron/event — deployed like
+any fn, just referenced here); API Gateway invokes it before the route handler and it returns
+`{ isAuthorized: bool, context? }` (simple-response mode, `EnableSimpleResponses: true`) — deny
+→ **403**, the route fn never runs; `context` reaches the route at
+`event.requestContext.authorizer.lambda`. The **lookup is entirely the handler's** (DB via
+`db()`/`sql()`, `secret()`, JWT, external HTTP — slsv injects the same env bindings, no SDK
+change); slsv only wires the authorizer (`CreateAuthorizer`, `AuthorizerUri` = the fn's
+lambda:path invoke arn, `IdentitySource` default `$request.header.Authorization`,
+`AuthorizerResultTtlInSeconds` default 300) + grants `apigateway.amazonaws.com` invoke on it
+(source arn `.../authorizers/<id>`, same pattern as route invoke perms). Named `<app>-<stage>-authz`,
+get-or-create; dropping `api.auth` unprotects routes then `DeleteAuthorizer` (after the route
+loop — AWS refuses deleting an in-use authorizer). `deleteHttpApi` cascades it on destroy, and
+`lint.ts` errors if `api.auth.function` isn't a declared fn. ponytail: (1) create-only — a
+changed `identitySource`/`ttl` on an existing authorizer isn't converged (destroy+redeploy, same
+as the custom domain); (2) Lambda REQUEST only (no JWT / IAM-policy mode / per-route different
+authorizers — add if hit); (3) **Floci enforces allow/deny but drops the authorizer `context`** —
+verified end-to-end on Floci: missing identity source → 401, `isAuthorized:false` → 403,
+`true` → 200, and `auth:false` routes stay public; but `event.requestContext.authorizer` is
+**null locally even on allow**, so `context` passthrough only works on real AWS
+(`…authorizer.lambda`). Don't rely on the authorizer context in `slsv dev`; re-derive it in the
+handler locally.
+
 ### Function triggers
 
 `http` · `queue` (SQS) · `cron` (EventBridge schedule) · `event` (EventBridge event-pattern
@@ -423,7 +453,8 @@ functions:
   api:
     runtime: nodejs22 # nodejs22 | nodejs24 — honored (maps to `<runtime>.x`); platform (AWS/Floci) must support it
     handler: ./src/api.handler # file.export
-    http: [{ method, path }] # OR queue: { name } OR cron: { schedule } OR event: { pattern }
+    http: [{ method, path, auth? }] # OR queue: { name } OR cron: { schedule } OR event: { pattern }. auth: false = leave this route public when api.auth is set
+    # a trigger-less fn (handler only, no http/queue/cron/event) is valid — used as an api.auth authorizer
     timeout?: 30 # secs, 1-900 (default 30)
     memory?: 256 # MB, 128-10240 (default 256)
     architecture?: arm64 # arm64 (default) | x86_64; set at create only (immutable)
@@ -432,7 +463,7 @@ functions:
     reservedConcurrency?: 10 # PutFunctionConcurrency (separate call); 0 throttles all
     provisionedConcurrency?: 2 # warm instances (--target aws only); publishes a version + `live` alias, triggers point at the alias
     environment?: { KEY: value } # custom env; slsv bindings (DATABASE_*, etc) always win
-api: { cors?: [origin, ...], domain?, certArn? } # cors: HTTP API CORS AllowOrigins (omit → '*'). domain: custom API domain, aws-only, provisioned end-to-end — ACM DNS-validated cert (deploy region, NOT us-east-1) + regional custom domain + API mapping + public CNAME, zero manual DNS; slsv writes DNS via Cloudflare (env CLOUDFLARE_API_TOKEN) and auto-finds the owning zone from the domain; certArn reuses an existing cert. See "API custom domain" below
+api: { cors?: [origin, ...], domain?, certArn?, auth? } # cors: HTTP API CORS AllowOrigins (omit → '*'). domain: custom API domain, aws-only, provisioned end-to-end — ACM DNS-validated cert (deploy region, NOT us-east-1) + regional custom domain + API mapping + public CNAME, zero manual DNS; slsv writes DNS via Cloudflare (env CLOUDFLARE_API_TOKEN) and auto-finds the owning zone from the domain; certArn reuses an existing cert. See "API custom domain" below. auth: { function, identitySource?, ttl? } = Lambda REQUEST authorizer protecting EVERY route (opt out per route with auth:false); function names a trigger-less fn returning { isAuthorized, context? }. See "API authorizer" below
 queues: { name: { type: sqs, fifo?: bool, visibilityTimeout?: secs, dlq?: name } }
 buckets: {
     name: {},

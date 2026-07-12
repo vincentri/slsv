@@ -16,6 +16,7 @@ functions:
         path: /api/{proxy+}
       - method: GET
         path: /health
+        auth: false                    # public — skip the api.auth authorizer on this one route
     # timeout: 30                      # seconds, 1-900 (default 30)
     # memory: 256                      # MB, 128-10240 (default 256)
     # architecture: arm64              # arm64 (default, cheaper+faster) | x86_64. Immutable after create.
@@ -45,6 +46,10 @@ functions:
         source: ["orders"]
         detail-type: ["order.placed"]
 
+  authorizer:                          # a normal fn with NO trigger — referenced by `api.auth` below.
+    runtime: nodejs22                  #   API Gateway invokes it before every protected route.
+    handler: ./src/auth.handler        #   Return { isAuthorized: bool, context? } — deny → 403.
+
 api: # optional — HTTP API Gateway settings
   # Origins allowed to call the API from a browser (CORS AllowOrigins). Omit this whole block
   # → '*' (open; required when the S3-hosted frontend is a different origin). Set it to lock
@@ -64,15 +69,30 @@ api: # optional — HTTP API Gateway settings
   domain: api.myapp.com
   # certArn: arn:aws:acm:...:certificate/xxx   # rare — reuse an existing ACM cert instead of
   #                                            #        slsv minting one (e.g. a wildcard)
+  # Lambda authorizer — protect the API with your own auth. When set, EVERY http route is
+  # guarded (opt one out with `auth: false` on the route, e.g. /health above). `function` names
+  # the trigger-less fn above that API Gateway invokes first; it returns
+  # { isAuthorized: bool, context? } — the lookup (DB / secret / JWT / …) is entirely yours.
+  auth:
+    function: authorizer
+    # identitySource: ["$request.header.Authorization"]  # optional — what API GW reads + caches on
+    # ttl: 300                                           # optional — cache allow/deny (s); 0 = every request
 
 queues:
   jobs:
     type: sqs
     # fifo: true                       # FIFO ordering + dedup (suffix .fifo auto-added)
     # visibilityTimeout: 60            # seconds (default 30, max 43200)
-    # dlq: jobsFailed                  # logical name of another queue (must exist)
+    # dlq: true                        # auto-provision `<name>Failed` (matches `fifo`); or name
+                                      #   a custom queue: `dlq: myDlq`. Either way slsv creates
+                                      #   it — no separate `queues:` entry needed.
+                                      #   `dlq: false` (or omit) = no DLQ; useful as a stage
+                                      #   overlay to disable a base-stage DLQ.
+    # maxReceiveCount: 5               # deliveries before a msg routes to the DLQ (default 5).
+                                      #   No-op without `dlq:` — ignored unless a DLQ is set.
 
-  # jobsFailed: { type: sqs }         # DLQ target — FIFO main queue needs FIFO DLQ
+  # jobsFailed: { type: sqs }         # only needed to TUNE a DLQ (e.g. visibilityTimeout);
+                                      #   otherwise `dlq: true` above creates it for you.
 
   # ordered:
   #   type: sqs
