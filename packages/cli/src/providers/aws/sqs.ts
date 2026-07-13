@@ -1,6 +1,7 @@
 import {
   SQSClient,
   CreateQueueCommand,
+  GetQueueUrlCommand,
   GetQueueAttributesCommand,
   SetQueueAttributesCommand,
 } from "@aws-sdk/client-sqs";
@@ -50,15 +51,25 @@ export async function ensureQueues(
       attrs.FifoQueue = "true";
       attrs.ContentBasedDeduplication = "true";
     }
-    if (q.visibilityTimeout !== undefined) {
-      attrs.VisibilityTimeout = String(q.visibilityTimeout);
-    }
+    // Mutable attrs: always explicit (default 30) so removing the field from the yml
+    // converges back to the default instead of leaving drift.
+    const mutable = { VisibilityTimeout: String(q.visibilityTimeout ?? 30) };
 
-    // ponytail: CreateQueue is idempotent on same name + attributes — no GetQueueUrl needed
-    const r = await sqs.send(
-      new CreateQueueCommand({ QueueName: queueName, Attributes: attrs, tags }),
-    );
-    const queueUrl = r.QueueUrl!;
+    // CreateQueue is idempotent on same name + attributes, but throws QueueNameExists
+    // when a mutable attr changed — converge via SetQueueAttributes instead of failing.
+    let queueUrl: string;
+    try {
+      const r = await sqs.send(
+        new CreateQueueCommand({ QueueName: queueName, Attributes: { ...attrs, ...mutable }, tags }),
+      );
+      queueUrl = r.QueueUrl!;
+    } catch (e) {
+      // real AWS (JSON protocol) names it QueueNameExists; older XML/emulators QueueAlreadyExists
+      if (!/QueueNameExists|QueueAlreadyExists/i.test((e as Error).name)) throw e;
+      const r = await sqs.send(new GetQueueUrlCommand({ QueueName: queueName }));
+      queueUrl = r.QueueUrl!;
+      await sqs.send(new SetQueueAttributesCommand({ QueueUrl: queueUrl, Attributes: mutable }));
+    }
 
     const a = await sqs.send(
       new GetQueueAttributesCommand({
