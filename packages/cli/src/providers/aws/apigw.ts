@@ -2,6 +2,7 @@ import {
   ApiGatewayV2Client,
   CreateApiCommand,
   UpdateApiCommand,
+  DeleteCorsConfigurationCommand,
   CreateIntegrationCommand,
   CreateRouteCommand,
   CreateStageCommand,
@@ -110,6 +111,7 @@ function buildCors(cors?: CorsConfig) {
     AllowOrigins: cors.origins,
     AllowMethods: cors.methods ?? (credentials ? ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] : ["*"]),
     AllowHeaders: cors.headers ?? (credentials ? ["content-type", "authorization"] : ["*"]),
+    ...(cors.exposeHeaders ? { ExposeHeaders: cors.exposeHeaders } : {}),
     // Only set when true — `AllowCredentials: false` + no field are equivalent, keeps the diff clean.
     ...(credentials ? { AllowCredentials: true } : {}),
   };
@@ -121,9 +123,14 @@ async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string, corsCon
   const existing = await apigw.send(new GetApisCommand({}));
   const found = existing.Items?.find((api) => api.Name === appName);
   if (found) {
-    // Converge CORS every deploy. `cors === null` means disabled (`api.cors: false`) — send an
-    // empty CorsConfiguration to CLEAR any config a prior deploy set (AWS removes CORS on empty).
-    await apigw.send(new UpdateApiCommand({ ApiId: found.ApiId, CorsConfiguration: cors ?? {} }));
+    // Converge CORS every deploy. `cors === null` means disabled (`api.cors: false`) — that
+    // needs DeleteCorsConfiguration: an empty CorsConfiguration {} does NOT clear it, it sets
+    // "enabled with nothing allowed" and the gateway then strips the handler's CORS headers.
+    if (cors) {
+      await apigw.send(new UpdateApiCommand({ ApiId: found.ApiId, CorsConfiguration: cors }));
+    } else {
+      await apigw.send(new DeleteCorsConfigurationCommand({ ApiId: found.ApiId }));
+    }
     return found;
   }
 

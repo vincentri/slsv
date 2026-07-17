@@ -3,6 +3,7 @@ import {
   CreateEventSourceMappingCommand,
   ListEventSourceMappingsCommand,
   DeleteEventSourceMappingCommand,
+  UpdateEventSourceMappingCommand,
 } from "@aws-sdk/client-lambda";
 import type { AppConfig } from "../../config.js";
 import type { AwsFnOutput } from "./functions.js";
@@ -32,7 +33,7 @@ export async function ensureEventSourceMappings(
         EventSourceArn: queue.arn,
       }),
     );
-    let alive = false;
+    let live = null;
     for (const m of existing.EventSourceMappings ?? []) {
       const stale =
         queue.createdAt && m.LastModified && m.LastModified.getTime() / 1000 < queue.createdAt;
@@ -40,10 +41,24 @@ export async function ensureEventSourceMappings(
         console.log(`    ↻ event source mapping for ${fnOutput.name} predates queue recreate — rewiring`);
         await lambda.send(new DeleteEventSourceMappingCommand({ UUID: m.UUID }));
       } else {
-        alive = true;
+        live = m;
       }
     }
-    if (alive) continue;
+
+    const desired = fn.queue.maxConcurrency;
+    if (live) {
+      // Converge ScalingConfig on the live mapping (create-only left maxConcurrency unapplied).
+      if ((live.ScalingConfig?.MaximumConcurrency ?? undefined) !== desired && live.UUID) {
+        await lambda.send(
+          new UpdateEventSourceMappingCommand({
+            UUID: live.UUID,
+            // Empty ScalingConfig clears MaximumConcurrency (dropping maxConcurrency from the yml).
+            ScalingConfig: desired ? { MaximumConcurrency: desired } : {},
+          }),
+        );
+      }
+      continue;
+    }
 
     // Deleting is async (state "Deleting" still conflicts) — retry create until it lands.
     for (let i = 0; ; i++) {
@@ -53,6 +68,7 @@ export async function ensureEventSourceMappings(
             FunctionName: fnOutput.name,
             EventSourceArn: queue.arn,
             BatchSize: 1,
+            ...(desired && { ScalingConfig: { MaximumConcurrency: desired } }),
           }),
         );
         break;

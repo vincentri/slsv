@@ -32,6 +32,8 @@ functions:
     runtime: nodejs22
     handler: ./src/worker.handler
     queue: { name: jobs } # SQS trigger — Lambda invoked per message
+    #   queue: { name: jobs, maxConcurrency: 5 }  # cap parallel Lambda pollers (2-1000). Per-mapping,
+    #                                              # doesn't consume the account's reserved-concurrency pool.
 
   cron:
     runtime: nodejs22

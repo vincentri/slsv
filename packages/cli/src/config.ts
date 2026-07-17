@@ -15,7 +15,10 @@ const FunctionConfig = z.object({
   runtime: z.enum(["nodejs22", "nodejs24"]),
   handler: z.string(),
   http: z.array(HttpRoute).optional(),
-  queue: z.object({ name: z.string() }).optional(),
+  queue: z
+    .object({ name: z.string(), maxConcurrency: z.number().int().min(2).max(1000).optional() })
+    .optional(), // maxConcurrency → SQS event-source-mapping ScalingConfig.MaximumConcurrency (caps parallel Lambda pollers; per-ESM, doesn't touch the account unreserved pool)
+
   cron: z.object({ schedule: z.string() }).optional(),
   event: z.object({ pattern: z.record(z.string(), z.any()) }).optional(), // EventBridge event-pattern trigger
   timeout: z.number().int().min(1).max(900).optional(), // seconds (Lambda hard limit 900)
@@ -121,6 +124,9 @@ const ApiConfig = z.object({
           origins: z.array(z.string()),
           methods: z.array(z.string()).optional(),
           headers: z.array(z.string()).optional(),
+          // Response headers the browser is allowed to read on a cross-origin
+          // response (e.g. content-disposition, so JS can read a download's filename).
+          exposeHeaders: z.array(z.string()).optional(),
           credentials: z.boolean().optional(),
         })
         .strict(),
