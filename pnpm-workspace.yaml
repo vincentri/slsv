@@ -6,8 +6,13 @@ packages:
 minimumReleaseAgeExclude:
   - adm-zip@0.6.0
 
+# pnpm 11 silently ignores onlyBuiltDependencies from a config file — the only
+# build-approval it honors from a file is dangerouslyAllowAllBuilds (esbuild's
+# postinstall must run, or the build has no binary). Kept onlyBuiltDependencies
+# for pnpm 10. ponytail: allows all deps' postinstalls — fine for a trusted repo.
 onlyBuiltDependencies:
   - esbuild
+dangerouslyAllowAllBuilds: true
 
 # Dedupe @smithy/types to one version — two copies (4.15.0 + 4.15.1) split the Command<>
 # type identity, breaking DynamoDBDocumentClient.send() overload resolution in db.ts.
