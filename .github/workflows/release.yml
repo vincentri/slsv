@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  workflow_dispatch: # manual — Actions tab → Run workflow
+
+permissions:
+  contents: write # push the version bump commit + tags back
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      # Apply pending changesets (bump versions + changelogs, delete consumed changesets).
+      - run: pnpm version-packages
+
+      # Commit the bump locally (no push yet — publish adds the tags).
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: version packages" || echo "nothing to commit"
+
+      # build + changeset publish (rewrites workspace:* → real version, creates git tags)
+      - run: pnpm release
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Push bump commit + the tags publish just created.
+      - run: git push --follow-tags

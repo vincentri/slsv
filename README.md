@@ -34,6 +34,28 @@ slsv dev   # Floci up → deploy → watch for changes
 
 ## Install
 
+> ### Requirement: pnpm (mandatory)
+>
+> **slsv apps are pnpm-only — this is not optional.** `slsv dev`, `slsv deploy`'s
+> frontend build, and every scaffold assume pnpm and will fail without it
+> (`slsv dev` spawns `pnpm` directly; `npm install` over the scaffold's
+> `pnpm-workspace.yaml` throws `ERESOLVE`). Install it first:
+>
+> ```sh
+> npm i -g pnpm
+> ```
+>
+> (The global CLI itself installs with any manager — the pnpm requirement is for
+> the app you build with it.)
+
+```sh
+pnpm add -g slsv         # or: npm i -g slsv
+```
+
+`slsv` pulls in `@slsv/sdk` automatically — import it in your handlers.
+
+### From source (working on slsv itself)
+
 ```sh
 git clone <repo>
 cd slsv
