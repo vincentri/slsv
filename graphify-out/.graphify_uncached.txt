@@ -1,0 +1,13 @@
+/Users/vincent/Bootcamp/project/slsv/.changeset/README.md
+/Users/vincent/Bootcamp/project/slsv/AGENTS.md
+/Users/vincent/Bootcamp/project/slsv/CLAUDE.md
+/Users/vincent/Bootcamp/project/slsv/PLAN.md
+/Users/vincent/Bootcamp/project/slsv/README.md
+/Users/vincent/Bootcamp/project/slsv/packages/cli/pnpm.yaml
+/Users/vincent/Bootcamp/project/slsv/packages/cli/templates/demo/AGENTS.md
+/Users/vincent/Bootcamp/project/slsv/packages/cli/templates/demo/frontend/index.html
+/Users/vincent/Bootcamp/project/slsv/packages/cli/templates/demo/frontend/pnpm-workspace.yaml
+/Users/vincent/Bootcamp/project/slsv/packages/cli/templates/demo/pnpm-workspace.yaml
+/Users/vincent/Bootcamp/project/slsv/packages/cli/templates/demo/slsv.yml
+/Users/vincent/Bootcamp/project/slsv/packages/cli/templates/slsv.example.yml
+/Users/vincent/Bootcamp/project/slsv/pnpm-workspace.yaml
