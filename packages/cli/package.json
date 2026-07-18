@@ -1,5 +1,5 @@
 {
-  "name": "slsv",
+  "name": "@slsv/cli",
   "version": "0.0.1",
   "description": "Simple local-AWS serverless framework",
   "license": "MIT",

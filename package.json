@@ -5,7 +5,7 @@
   "description": "slsv — simple local-AWS serverless framework (monorepo)",
   "scripts": {
     "build": "pnpm -r build",
-    "link:cli": "pnpm --filter @slsv/sdk build && pnpm --filter slsv build:link",
+    "link:cli": "pnpm --filter @slsv/sdk build && pnpm --filter @slsv/cli build:link",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint && oxlint .",
     "format": "oxfmt . '!**/.tokensave/**'",

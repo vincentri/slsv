@@ -49,10 +49,12 @@ slsv dev   # Floci up → deploy → watch for changes
 > the app you build with it.)
 
 ```sh
-pnpm add -g slsv         # or: npm i -g slsv
+pnpm add -g @slsv/cli    # or: npm i -g @slsv/cli
 ```
 
-`slsv` pulls in `@slsv/sdk` automatically — import it in your handlers.
+Installs the `slsv` command and pulls in `@slsv/sdk` automatically — import it in
+your handlers. (The CLI ships as `@slsv/cli` because npm blocks the bare name
+`slsv` as too similar to existing packages; the command you run is still `slsv`.)
 
 ### From source (working on slsv itself)
 
