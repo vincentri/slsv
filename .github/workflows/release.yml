@@ -5,7 +5,6 @@ on:
 
 permissions:
   contents: write # push the version bump commit + create the release/tag
-  id-token: write # npm provenance — links the published package to this repo/commit
 
 jobs:
   release:
@@ -37,11 +36,9 @@ jobs:
 
       # build + publish. pnpm -r publish rewrites workspace:* → real version and
       # prints npm's real error (changesets 2.31.0's publisher masks it as a TypeError).
-      # NPM_CONFIG_PROVENANCE (CI-only) attaches a provenance attestation.
       - run: pnpm release
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
 
       # Push the version-bump commit.
       - run: git push
