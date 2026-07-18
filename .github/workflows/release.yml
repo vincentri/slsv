@@ -34,17 +34,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -am "chore: version packages" || echo "nothing to commit"
 
-      # Diagnostic: prove the token authenticates + can create @slsv scope.
-      # changeset publish swallows npm's real error as a TypeError, so surface it here.
-      - name: Verify npm auth
-        run: |
-          echo "whoami:"; npm whoami
-          echo "@slsv org membership (empty/err = org missing → scoped publish fails):"
-          npm org ls slsv 2>&1 | head || true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # build + changeset publish (rewrites workspace:* → real version, creates git tags)
+      # build + publish. pnpm -r publish rewrites workspace:* → real version and
+      # prints npm's real error (changesets 2.31.0's publisher masks it as a TypeError).
       - run: pnpm release
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

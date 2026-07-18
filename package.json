@@ -12,7 +12,7 @@
     "format:check": "oxfmt --check . '!**/.tokensave/**'",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && pnpm -r publish --access public --no-git-checks"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
