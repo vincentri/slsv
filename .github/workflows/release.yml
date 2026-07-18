@@ -4,7 +4,8 @@ on:
   workflow_dispatch: # manual — Actions tab → Run workflow
 
 permissions:
-  contents: write # push the version bump commit + tags back
+  contents: write # push the version bump commit + create the release/tag
+  id-token: write # npm provenance — links the published package to this repo/commit
 
 jobs:
   release:
@@ -36,9 +37,24 @@ jobs:
 
       # build + publish. pnpm -r publish rewrites workspace:* → real version and
       # prints npm's real error (changesets 2.31.0's publisher masks it as a TypeError).
+      # NPM_CONFIG_PROVENANCE (CI-only) attaches a provenance attestation.
       - run: pnpm release
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
 
-      # Push bump commit + the tags publish just created.
-      - run: git push --follow-tags
+      # Push the version-bump commit.
+      - run: git push
+
+      # Tag + GitHub Release for this version (skip if it already exists — e.g. a
+      # re-run with no new changeset). gh creates the tag on the pushed commit.
+      - name: GitHub Release
+        run: |
+          V=$(node -p "require('./packages/cli/package.json').version")
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "release v$V already exists — skipping"
+          else
+            gh release create "v$V" --title "v$V" --generate-notes
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
