@@ -39,7 +39,8 @@ jobs:
       - name: Verify npm auth
         run: |
           echo "whoami:"; npm whoami
-          echo "can-publish dry-run:"; npm publish packages/sdk --dry-run --access public
+          echo "@slsv org membership (empty/err = org missing → scoped publish fails):"
+          npm org ls slsv 2>&1 | head || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
