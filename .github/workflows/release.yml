@@ -34,6 +34,15 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -am "chore: version packages" || echo "nothing to commit"
 
+      # Diagnostic: prove the token authenticates + can create @slsv scope.
+      # changeset publish swallows npm's real error as a TypeError, so surface it here.
+      - name: Verify npm auth
+        run: |
+          echo "whoami:"; npm whoami
+          echo "can-publish dry-run:"; npm publish packages/sdk --dry-run --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       # build + changeset publish (rewrites workspace:* → real version, creates git tags)
       - run: pnpm release
         env:
