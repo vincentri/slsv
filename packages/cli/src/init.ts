@@ -63,6 +63,7 @@ export function initScaffold(
     writeFileSync(path.join(dir, "slsv.yml"), MINIMAL_SLSV_YML(name, stack));
     writeFileSync(path.join(dir, ".gitignore"), GITIGNORE);
     writeFileSync(path.join(dir, "pnpm-workspace.yaml"), PNPM_WORKSPACE);
+    writeStageEnvFiles(dir); // .env.local / .env.dev / .env.prod (no secrets in this template)
   } else {
     copyDemoTemplate(dir, name);
   }
@@ -83,6 +84,13 @@ function copyDemoTemplate(dir: string, name: string) {
     /"@slsv\/sdk": "workspace:\*"/,
     `"@slsv/sdk": "${sdkDependency(dir)}"`,
   );
+  // The demo's tracked files are only the `.env*.example` twins (real `.env.*` is gitignored, so
+  // it never ships in the package) — generate the real per-stage env files here.
+  writeStageEnvFiles(dir, {
+    local: "WEBHOOK_SECRET=dev-secret\n",
+    dev: "WEBHOOK_SECRET=dev-secret\n",
+    prod: "WEBHOOK_SECRET=CHANGE_ME_prod_webhook_secret\n",
+  });
 }
 
 // api-db: API-only app wired to an EXTERNAL Postgres via a connection string (Supabase/Neon/
@@ -103,6 +111,7 @@ function scaffoldApiDb(dir: string, name: string) {
   writeFileSync(path.join(dir, ".gitignore"), GITIGNORE);
   writeFileSync(path.join(dir, "pnpm-workspace.yaml"), PNPM_WORKSPACE);
   writeFileSync(path.join(dir, ".env.example"), API_DB_ENV_EXAMPLE);
+  writeFileSync(path.join(dir, ".env.local"), API_DB_ENV_LOCAL(name));
   writeFileSync(path.join(dir, ".env.dev"), API_DB_ENV_DEV(name));
   writeFileSync(path.join(dir, ".env.prod"), API_DB_ENV_PROD(name));
 
@@ -146,16 +155,39 @@ function replaceInFile(file: string, search: RegExp, replacement: string) {
   writeFileSync(file, readFileSync(file, "utf8").replace(search, replacement));
 }
 
+// Every scaffold ships the three per-stage env files: `.env.local` (loaded by `slsv dev`,
+// stage `local`), `.env.dev`, and `.env.prod`. All git-ignored (the app's .gitignore ignores
+// `.env.*`) so they can hold real values/secrets without being committed. `vars` seeds each with
+// starter KEY=value lines (placeholders); omit for a template with no secrets.
+const STAGE_ENV_HEADER = {
+  local: `# .env.local — loaded by \`slsv dev\` (stage: local). Local-machine overrides; highest
+# precedence, git-ignored, never sent to the cloud. Put local-only values/secrets here.
+`,
+  dev: `# .env.dev — loaded by \`slsv deploy --stage dev\` (your server dev stack). git-ignored.
+# Falls back to .env for any name not set here.
+`,
+  prod: `# .env.prod — loaded by \`slsv deploy --stage prod\`. git-ignored.
+# Falls back to .env for any name not set here.
+`,
+};
+
+function writeStageEnvFiles(dir: string, vars: { local?: string; dev?: string; prod?: string } = {}) {
+  writeFileSync(path.join(dir, ".env.local"), STAGE_ENV_HEADER.local + (vars.local ?? ""));
+  writeFileSync(path.join(dir, ".env.dev"), STAGE_ENV_HEADER.dev + (vars.dev ?? ""));
+  writeFileSync(path.join(dir, ".env.prod"), STAGE_ENV_HEADER.prod + (vars.prod ?? ""));
+}
+
 export function initOutroMessage(
   name: string,
   stack: Stack,
   template: Template = "minimal",
 ): string {
-  // api-db ships a ready .env.dev (edit its DATABASE_URL) — no cp, no frontend.
+  // api-db ships a ready .env.local (edit its DATABASE_URL for `slsv dev`) — no cp, no frontend.
   if (template === "api-db")
-    return `cd ${name} && pnpm install && (edit .env.dev DATABASE_URL) && slsv dev`;
+    return `cd ${name} && pnpm install && (edit .env.local DATABASE_URL) && slsv dev`;
 
-  const base = `cd ${name} && cp .env.example .env`;
+  // .env.local ships with every scaffold now, so `slsv dev` reads it directly — no cp needed.
+  const base = `cd ${name}`;
   const fe = `cd frontend && pnpm install && cd ..`;
   const run = "slsv dev";
   if (stack === "backend") return `${base} && pnpm install && ${run}`;
@@ -381,15 +413,20 @@ stages:
           DB_SSL: "on" # prod: any non-"off" value => ssl:"require"
 `;
 
-const API_DB_ENV_EXAMPLE = `# Copy the relevant value into .env.dev (local/dev) and .env.prod (production).
+const API_DB_ENV_EXAMPLE = `# Reference. Put the real value in .env.local (\`slsv dev\`), .env.dev, or .env.prod.
 # slsv upserts this into Secrets Manager and injects only the secret id — the value is fetched
 # at runtime, never baked into the Lambda env.
 DATABASE_URL=postgres://user:password@host:5432/dbname
 `;
 
-const API_DB_ENV_DEV = (name: string) => `# dev stage (also used by \`slsv dev\` locally). DB_SSL is "off" (slsv.yml) → no TLS.
-# Point this at your dev Postgres (a local instance, or a Supabase/Neon dev branch).
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/${name}_dev
+const API_DB_ENV_LOCAL = (name: string) => `# .env.local — loaded by \`slsv dev\` (stage: local). DB_SSL is "off" (slsv.yml) → no TLS.
+# Point this at your LOCAL Postgres (git-ignored, never sent to the cloud).
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/${name}_local
+`;
+
+const API_DB_ENV_DEV = (name: string) => `# .env.dev — loaded by \`slsv deploy --stage dev\` (server dev stack). DB_SSL "off" → no TLS.
+# Point this at your dev Postgres (a Supabase/Neon dev branch or a dev RDS).
+DATABASE_URL=postgres://postgres:postgres@DEV-HOST:5432/${name}_dev
 `;
 
 const API_DB_ENV_PROD = (name: string) => `# prod stage. DB_SSL is "on" (slsv.yml stages.prod) → ssl:"require".

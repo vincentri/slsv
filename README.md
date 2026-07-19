@@ -81,10 +81,12 @@ slsv init my-app --demo  # full demo (HTTP + webhook + SQS + cron)
 
 ```sh
 cd my-app
-cp .env.example .env
 pnpm install
 slsv dev
 ```
+
+Scaffolds ship `.env.local` (loaded by `slsv dev`), plus `.env.dev` / `.env.prod` for later
+deploys — all git-ignored. Put local secrets in `.env.local`; no `cp` needed.
 
 `slsv dev` does:
 

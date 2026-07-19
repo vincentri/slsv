@@ -38,6 +38,16 @@ describe("initScaffold", () => {
     expect(existsSync(path.join(app, "frontend"))).toBe(false);
   });
 
+  it("ships .env.local / .env.dev / .env.prod in every template", () => {
+    for (const t of ["minimal", "demo", "api-db"] as const) {
+      initScaffold(t, tmp, t, "backend");
+      const app = path.join(tmp, t);
+      for (const f of [".env.local", ".env.dev", ".env.prod"]) {
+        expect(existsSync(path.join(app, f)), `${t} missing ${f}`).toBe(true);
+      }
+    }
+  });
+
   it("ships AGENTS.md in every template", () => {
     for (const t of ["minimal", "demo", "api-db"] as const) {
       initScaffold(t, tmp, t, "backend");

@@ -599,7 +599,13 @@ stages: { <name>: { <partial-config> } } # optional; deep-merged over base for -
 - `slsv init` → interactive prompt (@clack/prompts) → **minimal** template (1 HTTP fn + 1 table)
 - `slsv init <name>` → skip prompt
 - `slsv init --demo` → full demo (HTTP + webhook + SQS job + cron)
-- Demo template uses `paymentWebhook` (x-webhook-secret header, no Stripe). `.env.example` works as-is.
+- Demo template uses `paymentWebhook` (x-webhook-secret header, no Stripe).
+- **Every scaffold ships the three per-stage env files** — `.env.local` (loaded by `slsv dev`,
+  stage `local`), `.env.dev`, `.env.prod` (`writeStageEnvFiles` in `init.ts`; api-db writes its own
+  richer variants with a `DATABASE_URL`). All git-ignored (the app `.gitignore` ignores `.env.*`,
+  keeps `.env*.example`), so `slsv dev` reads `.env.local` directly — the outro no longer does
+  `cp .env.example .env`. Demo generates them post-`cpSync` (its real `.env.*` is gitignored, so
+  only the `.env*.example` twins are tracked/shipped in the package).
 - **pnpm-only.** slsv apps use **pnpm** exclusively — the hint, scaffolds, `slsv dev`, and the frontend `build:` command all assume pnpm. Mixing npm/yarn breaks: running `npm install` over a pnpm `node_modules` throws `ERESOLVE`.
 - **pnpm build-script gate.** pnpm 10+ blocks native build scripts by default and **exits non-zero** on any ignored build → `ERR_PNPM_IGNORED_BUILDS`, breaking `&&` chains. esbuild is a build-script dep at BOTH the app root (via the `@slsv/sdk` file:-link toolchain) and the frontend (via vite). **pnpm 11 silently ignores the `onlyBuiltDependencies` allowlist from a config file** (also ignores `.npmrc`/env/CLI-flag variants) — the _only_ setting it honors from a file is `dangerouslyAllowAllBuilds: true` (camelCase) in `pnpm-workspace.yaml`. So scaffolds ship that file at **app root + `frontend/`** (static in demo; `PNPM_WORKSPACE` const written at both in `init.ts` minimal). Trade-off: allows all deps' postinstalls (fine for a trusted dev scaffold). Verified end-to-end on pnpm 11.5.2.
 - The `Next:` hint is hardcoded pnpm: `pnpm install` at root **and** `frontend/`, then `slsv dev`.
