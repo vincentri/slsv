@@ -10,6 +10,25 @@ export type DeployOutputs = {
   frontendUrl?: string;
 };
 
+// Load env/secret values in precedence order:
+//   1. .env.local  — local-machine overrides, ONLY on --target local (e.g. `slsv dev`). Never
+//      sent to the cloud; git-ignore it. Mirrors Vite/Next `.env.local`.
+//   2. .env.<stage> — per-stage values.
+//   3. .env         — shared defaults.
+// Default (override=false): dotenv never overwrites an already-set key, so first-in wins — load
+// highest-precedence first. override=true (dev hot-reload of an edited .env): last-in wins, so
+// load in reverse to keep the SAME precedence while picking up changed values.
+export function loadEnv(cwd: string, stage: string, target: string, override = false) {
+  const files = [
+    ...(target === "local" ? [".env.local"] : []),
+    `.env.${stage}`,
+    ".env",
+  ];
+  for (const f of override ? [...files].reverse() : files) {
+    dotenv({ path: path.join(cwd, f), override });
+  }
+}
+
 const hasResources = (cfg: AppConfig) =>
   Object.keys(cfg.functions ?? {}).length > 0 ||
   Object.keys(cfg.databases ?? {}).length > 0 ||
@@ -25,14 +44,7 @@ export async function deploy(
   mode: "deploy" | "dev" = "deploy",
   stage = "dev",
 ): Promise<DeployOutputs> {
-  // Precedence (dotenv never overwrites an already-set key, so first load wins):
-  //   1. .env.local  — local-machine overrides, ONLY on --target local (e.g. `slsv dev`). Never
-  //      sent to the cloud; git-ignore it. Mirrors Vite/Next `.env.local`.
-  //   2. .env.<stage> — per-stage values.
-  //   3. .env         — shared defaults.
-  if (provider.target === "local") dotenv({ path: path.join(cwd, ".env.local") });
-  dotenv({ path: path.join(cwd, `.env.${stage}`) });
-  dotenv({ path: path.join(cwd, ".env") });
+  loadEnv(cwd, stage, provider.target);
   // Every resource is namespaced by stage so dev/prod stacks coexist in one account.
   const prefix = `${cfg.app}-${stage}`;
   console.log(`\nDeploying ${cfg.app} (stage: ${stage})...`);

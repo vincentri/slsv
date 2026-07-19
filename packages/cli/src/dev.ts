@@ -6,6 +6,7 @@ import type { AppConfig } from "./config.js";
 import type { AwsProvider } from "./providers/aws/index.js";
 import { bundleHandler } from "./bundle.js";
 import { lintApp } from "./lint.js";
+import { deploy, loadEnv } from "./deploy.js";
 
 // Get the frontend deps ready before starting its dev server (pnpm-only). pnpm gates native
 // build scripts (vite's esbuild) and exits non-zero — and pnpm 11 ignores the
@@ -65,7 +66,24 @@ export async function startDev(
 
   console.log(`\nWatching ${cwd}...`);
 
-  const reload = async () => {
+  // An .env* edit changes injected env/secret values, which live in the Lambda CONFIG, not the
+  // code zip — a code-only rebundle wouldn't pick them up. Re-run the full (idempotent) deploy so
+  // ensureSecrets + function-config env are re-injected. loadEnv(..., override=true) is required:
+  // deploy's own dotenv won't overwrite an already-set process.env key, so without this the old
+  // value would stick for the life of the dev process.
+  const isEnvFile = (p: string) => /(^|[\\/])\.env(\.|$)/.test(p);
+
+  const reload = async (changedPath: string) => {
+    if (isEnvFile(changedPath)) {
+      console.log("\n.env change detected — redeploying (env/secrets)...");
+      loadEnv(cwd, stage, provider.target, true);
+      try {
+        await deploy(cfg, provider, cwd, "dev", stage);
+      } catch (e) {
+        console.error(`  ✗ ${(e as Error).message}`);
+      }
+      return;
+    }
     console.log("\nChange detected — rebundling...");
     // Same preflight deploy runs — a lint failure (bad handler/export, undeclared SDK name)
     // must fail the reload loudly, not silently leave the old code running.

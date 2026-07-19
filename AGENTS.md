@@ -115,10 +115,10 @@ packages/cli/templates/demo/         — canonical reference app (scaffolded by 
 Only `packages/cli` and `packages/sdk` exist today. Anything below describing `packages/ui/`,
 `slsv ui`, or an "inspector"/dashboard is aspirational until that package lands.
 
-**Build:** `pnpm build` (all), `pnpm --filter slsv build`, `pnpm --filter @slsv/sdk build`
-**Lint:** `pnpm lint` or per-package `pnpm --filter slsv lint`
+**Build:** `pnpm build` (all), `pnpm --filter @slsv/cli build`, `pnpm --filter @slsv/sdk build`
+**Lint:** `pnpm lint` or per-package `pnpm --filter @slsv/cli lint`
 **Test:** `pnpm test`
-**Dev CLI:** `pnpm --filter slsv dev` (tsx watch), or `pnpm --filter slsv build:link` to re-link
+**Dev CLI:** `pnpm --filter @slsv/cli dev` (tsx watch), or `pnpm --filter @slsv/cli build:link` to re-link
 
 ## Phase 1 services (locked)
 
@@ -219,9 +219,12 @@ read it at runtime: `const s = await secret('NAME')` (`@slsv/sdk`), which resolv
 → cached per container (`providers/aws/secret.ts`). ponytail: cache has no TTL, so a rotated
 secret is picked up on the next cold start.
 
-### Stages (`--stage`, default `dev`)
+### Stages (`--stage`; `slsv dev` defaults `local`, everything else `dev`)
 
-Every command takes `--stage <name>` (`dev`/`deploy`/`logs`/`destroy`). Stage namespaces
+**`slsv dev` defaults to stage `local`** (local Floci stack) — deliberately distinct from a
+real server `dev` stack (`slsv deploy --stage dev`) so the two never share resource names
+(`<app>-local-*` vs `<app>-dev-*`). All other commands (`deploy`/`plan`/`logs`/`destroy`)
+default to `dev`. Every command takes `--stage <name>` to override. Stage namespaces
 **all** resources: names become `<app>-<stage>-<name>` (e.g. `myapp-prod-api`), so dev and
 prod stacks coexist in one account. Single derivation point: `deploy.ts` builds
 `prefix = ${app}-${stage}` and passes it as the `appName` every provider already used — the

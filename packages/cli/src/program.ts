@@ -120,7 +120,9 @@ export function buildProgram(): Command {
   program
     .command("dev")
     .description("Start Floci, deploy, then watch for changes")
-    .option("--stage <name>", "deployment stage (namespaces resources)", "dev")
+    // Local dev runs under stage `local` — keeps it distinct from a real server `dev` stack
+    // (`slsv deploy --stage dev`) so the two never share resource names. Override with --stage.
+    .option("--stage <name>", "deployment stage (namespaces resources)", "local")
     .action(async (opts: { stage: string }) => {
       const cwd = process.cwd();
       const stage = validStage(opts.stage);
