@@ -194,6 +194,10 @@ export type AppConfig = z.infer<typeof AppConfig>;
 export type DynamoDbDef = z.infer<typeof DynamoDbConfig>;
 export type FrontendDef = z.infer<typeof FrontendConfig>;
 
+// ponytail: re-exported for the docs generator (scripts/docs/schema.ts). The runtime schema is
+// the same object — no behavior change.
+export const AppConfigSchema = AppConfig;
+
 // Resolve a queue's DLQ logical name. `true` → `${queue}Failed`; a string is returned as-is;
 // absent → undefined. Callers (sqs.ts create, lint.ts unused-check) share this so the derived
 // name stays consistent.

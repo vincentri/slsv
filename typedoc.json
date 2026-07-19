@@ -1,0 +1,18 @@
+{
+  "$schema": "https://typedoc-plugin-markdown.org/plugins/typedoc-plugin-markdown",
+  "entryPoints": ["packages/sdk/src/index.ts"],
+  "out": "docs/reference/sdk",
+  "plugin": ["typedoc-plugin-markdown"],
+  "githubPages": false,
+  "readme": "none",
+  "entryFileName": "index.md",
+  "hidePageHeader": true,
+  "useTsLinkResolution": true,
+  "excludePrivate": true,
+  "excludeExternals": true,
+  "categorizeByGroup": false,
+  "navigation": {
+    "includeCategories": false,
+    "includeGroups": false
+  }
+}

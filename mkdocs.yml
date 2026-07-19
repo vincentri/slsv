@@ -1,0 +1,98 @@
+site_name: slsv
+site_description: Simple local-AWS serverless framework
+site_url: https://vincent.ri.github.io/slsv
+repo_url: https://github.com/vincent.ri/slsv
+repo_name: vincent.ri/slsv
+edit_uri: edit/main/
+
+strict: true
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.smartsymbols
+  - pymdownx.caret
+  - pymdownx.tilde
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Stages & targets: architecture/stages.md
+      - Reconcile & prune: architecture/reconcile.md
+      - Secrets: architecture/secrets.md
+      - IAM: architecture/iam.md
+  - Services:
+      - Lambda: services/lambda.md
+      - API Gateway: services/api-gateway.md
+      - Queues & Events: services/queues-events.md
+      - Stores (DynamoDB & S3): services/stores.md
+      - Caches & Databases: services/caches-databases.md
+  - Reference:
+      - slsv.yml schema: reference/slsv-yml.md
+      - "@slsv/sdk API": reference/sdk/index.md
+      - slsv CLI: reference/cli/index.md
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vincent.ri/slsv

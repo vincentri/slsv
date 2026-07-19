@@ -31,15 +31,15 @@
     "format:check": "oxfmt --check ."
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1084.0",
-    "@aws-sdk/client-s3": "^3.1084.0",
-    "@aws-sdk/client-secrets-manager": "^3.1084.0",
-    "@aws-sdk/client-sqs": "^3.1084.0",
-    "@aws-sdk/lib-dynamodb": "^3.1084.0",
-    "@aws-sdk/s3-request-presigner": "^3.1084.0",
+    "@aws-sdk/client-dynamodb": "^3.1090.0",
+    "@aws-sdk/client-s3": "^3.1090.0",
+    "@aws-sdk/client-secrets-manager": "^3.1090.0",
+    "@aws-sdk/client-sqs": "^3.1090.0",
+    "@aws-sdk/lib-dynamodb": "^3.1090.0",
+    "@aws-sdk/s3-request-presigner": "^3.1090.0",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.11.1",
-    "mysql2": "^3.22.6",
+    "mysql2": "^3.23.0",
     "pg": "^8.22.0"
   },
   "devDependencies": {
@@ -47,7 +47,7 @@
     "@types/pg": "^8.20.0",
     "tsup": "^8.5.1",
     "typescript": "^7.0.2",
-    "vite": "^8.1.4",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   }
 }
