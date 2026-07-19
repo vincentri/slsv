@@ -176,7 +176,45 @@ caches: # valkey (write `type: redis` or `type: valkey` — same backend)
 
 secrets:
   - JWT_SECRET # read from .env, injected into every function
+
+api: # optional — HTTP API settings (aws-only unless noted)
+  # cors: ["https://app.example.com"]   # lock CORS to these origins (omit → open '*')
+  domain: api.myapp.com # custom domain, provisioned end-to-end (ACM cert + DNS via Cloudflare)
+  # basePath: myapp                     # share ONE domain across apps — see below
+  # certArn: arn:aws:acm:...            # reuse an existing cert instead of slsv minting one
 ```
+
+### Custom domain
+
+`api.domain` puts the HTTP API on a real domain with **zero manual DNS** (`--target aws`): slsv
+requests a DNS-validated ACM cert, writes the validation + public CNAME via Cloudflare (needs
+`CLOUDFLARE_API_TOKEN`), and finds the owning zone itself. Skipped on `slsv dev` (Floci has no ACM).
+
+**One domain, many apps (`api.basePath`).** Point several separate slsv apps at the *same* `domain`,
+each mounted under its own path:
+
+```yaml
+# api/qualify/slsv.yml        # api/auth/slsv.yml
+api:                          # api:
+  domain: api.myapp.com       #   domain: api.myapp.com
+  basePath: qualify           #   basePath: auth
+functions:
+  api:
+    http:
+      - { method: ANY, path: /v1/{proxy+} }   # UNCHANGED — API GW strips the base path
+```
+
+→ `api.myapp.com/qualify/v1/...` and `api.myapp.com/auth/v1/...`. How it works:
+
+- The prefix is an **API Gateway v2 mapping key**, not a route. API GW strips `/qualify` before
+  forwarding, so every app keeps `path: /v1/{proxy+}` — no route rewrites.
+- Each app keeps its own `slsv.yml`, gateway, and deploy/scale/teardown lifecycle. Deploy order
+  doesn't matter — the first app provisions the domain + cert, the rest reuse it (idempotent by
+  domain name). Changing an app's `basePath` re-keys its mapping in place.
+- **Teardown is sibling-safe.** `slsv destroy` on one app removes only *that app's* mapping and
+  leaves the shared domain, cert, and DNS alone while other apps are still mounted — only the
+  **last app out** tears them down. Omit `basePath` for a single-app domain (mapping at the root);
+  its teardown is unchanged.
 
 ### Buckets
 
