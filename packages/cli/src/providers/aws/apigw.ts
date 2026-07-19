@@ -48,7 +48,7 @@ export async function ensureApiGateway(
   const httpFunctions = Object.entries(functions).filter(([, fn]) => fn.http?.length);
   if (httpFunctions.length === 0) return undefined;
 
-  const api = await ensureHttpApi(apigw, appName, cors);
+  const api = await ensureHttpApi(apigw, appName, cors, isLocal);
   if (!api.ApiId) throw new Error(`API Gateway HTTP API for ${appName} is missing an id`);
 
   await ensureStage(apigw, api.ApiId);
@@ -96,19 +96,33 @@ export async function ensureApiGateway(
 // `false` → null: no gateway CORS at all (handler owns it). `credentials: true` is incompatible
 // with `*` on origin/methods/headers (browsers reject it), so it forces explicit origins and
 // swaps `*` methods/headers for concrete defaults.
-function buildCors(cors?: CorsConfig) {
+export function buildCors(cors: CorsConfig | undefined, isLocal: boolean) {
   if (cors === false) return null;
   if (!cors) return { AllowOrigins: ["*"], AllowMethods: ["*"], AllowHeaders: ["*"] };
   if (Array.isArray(cors)) return { AllowOrigins: cors, AllowMethods: ["*"], AllowHeaders: ["*"] };
 
   const credentials = cors.credentials ?? false;
-  if (credentials && cors.origins.includes("*")) {
-    throw new ConfigError(
-      "api.cors.credentials requires explicit origins — browsers reject 'Access-Control-Allow-Origin: *' on credentialed requests. List your site(s) in api.cors.origins.",
-    );
+  const origins = cors.origins ?? [];
+  // No usable origins = none listed, or a wildcard. Fine for a non-credentialed API (→ '*').
+  const openOrigins = origins.length === 0 || origins.includes("*");
+
+  // `credentials: true` is incompatible with an open origin — browsers reject
+  // 'Access-Control-Allow-Origin: *' on credentialed requests. On real AWS that's a hard error,
+  // so fail clearly (the common cause: base cors carries `credentials` but the deploying stage
+  // never added its `origins`). Locally CORS is Floci/Quarkus-owned — the gateway config is
+  // ignored — so don't block `slsv dev`; emit a permissive config (without credentials, since
+  // '*' + credentials is itself invalid).
+  if (credentials && openOrigins) {
+    if (!isLocal) {
+      throw new ConfigError(
+        "api.cors.credentials requires explicit origins — browsers reject 'Access-Control-Allow-Origin: *' on credentialed requests. List your site(s) in api.cors.origins (e.g. per-stage under stages.<name>.api.cors.origins).",
+      );
+    }
+    return { AllowOrigins: ["*"], AllowMethods: cors.methods ?? ["*"], AllowHeaders: cors.headers ?? ["*"] };
   }
+
   return {
-    AllowOrigins: cors.origins,
+    AllowOrigins: openOrigins ? ["*"] : origins,
     AllowMethods: cors.methods ?? (credentials ? ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] : ["*"]),
     AllowHeaders: cors.headers ?? (credentials ? ["content-type", "authorization"] : ["*"]),
     ...(cors.exposeHeaders ? { ExposeHeaders: cors.exposeHeaders } : {}),
@@ -117,8 +131,13 @@ function buildCors(cors?: CorsConfig) {
   };
 }
 
-async function ensureHttpApi(apigw: ApiGatewayV2Client, appName: string, corsConfig?: CorsConfig) {
-  const cors = buildCors(corsConfig);
+async function ensureHttpApi(
+  apigw: ApiGatewayV2Client,
+  appName: string,
+  corsConfig: CorsConfig | undefined,
+  isLocal: boolean,
+) {
+  const cors = buildCors(corsConfig, isLocal);
 
   const existing = await apigw.send(new GetApisCommand({}));
   const found = existing.Items?.find((api) => api.Name === appName);

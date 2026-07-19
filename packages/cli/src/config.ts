@@ -121,7 +121,11 @@ const ApiConfig = z.object({
       z.array(z.string()),
       z
         .object({
-          origins: z.array(z.string()),
+          // Optional so shared cors (credentials/methods/headers) can live in the base config
+          // and each stage adds only its own `origins` overlay. A merged config that still has
+          // no origins is fine locally (Floci owns CORS) and rejected on `--target aws` when
+          // `credentials` is set (buildCors) — an open '*' is invalid for credentialed requests.
+          origins: z.array(z.string()).optional(),
           methods: z.array(z.string()).optional(),
           headers: z.array(z.string()).optional(),
           // Response headers the browser is allowed to read on a cross-origin

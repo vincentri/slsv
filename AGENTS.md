@@ -352,10 +352,16 @@ full control. **`credentials: true`** (needed for `fetch(url, { credentials: 'in
 cookies / an Authorization header treated as a credential) sets `AllowCredentials: true`, but
 the browser/AWS rule is that credentials are **incompatible with `*`** on origin, methods, AND
 headers — so `buildCors` forces explicit origins (deploy **throws `ConfigError`** on
-`origins:['*']`+credentials) and swaps the `*` method/header defaults for concrete lists
-(methods `GET,POST,PUT,PATCH,DELETE,OPTIONS`; headers `content-type,authorization` — override
-either via the object). Omit `api.cors` → `['*']` (the open default, needed for the two-origin
-S3-frontend setup). Threaded `deploy.ts (cfg.api?.cors) → wireHttp → ensureApiGateway →
+`origins:['*']` **or missing `origins`** + credentials) and swaps the `*` method/header defaults
+for concrete lists (methods `GET,POST,PUT,PATCH,DELETE,OPTIONS`; headers
+`content-type,authorization` — override either via the object). **`origins` is optional** so
+shared cors (credentials/methods/headers/exposeHeaders) lives in the base config and each stage
+adds only its own `origins` (the common pattern: base is invalid standalone, valid once a stage
+overlays origins). The credentials+no-origins throw is **`--target aws` only** — on `slsv dev`
+CORS is Floci/Quarkus-owned (the gateway config is ignored), so `buildCors(cors, isLocal)` skips
+the throw and emits a permissive local config (no `AllowCredentials`, since `*`+credentials is
+itself invalid) rather than blocking dev. Omit `api.cors` → `['*']` (the open default, needed for
+the two-origin S3-frontend setup). Threaded `deploy.ts (cfg.api?.cors) → wireHttp → ensureApiGateway →
 ensureHttpApi`. Unlike CloudFront (create-only), CORS is **drift-corrected every deploy** via
 `UpdateApiCommand`, so changing `api.cors` takes effect on redeploy (verified on Floci: the
 stored `CorsConfiguration` matches — `AllowCredentials:true` + the specific origin/methods/
@@ -541,7 +547,7 @@ functions:
     reservedConcurrency?: 10 # PutFunctionConcurrency (separate call); 0 throttles all
     provisionedConcurrency?: 2 # warm instances (--target aws only); publishes a version + `live` alias, triggers point at the alias
     environment?: { KEY: value } # custom env; slsv bindings (DATABASE_*, etc) always win
-api: { cors?: [origin, ...] | { origins, methods?, headers?, credentials? }, domain?, certArn?, auth? } # cors: HTTP API CORS. Array = AllowOrigins (omit → '*', methods/headers stay '*'). Object = full control; credentials:true (for fetch credentials:'include') forces explicit origins + concrete methods/headers ('*' is invalid with credentials — deploy rejects origins:['*']+credentials). domain: custom API domain, aws-only, provisioned end-to-end — ACM DNS-validated cert (deploy region, NOT us-east-1) + regional custom domain + API mapping + public CNAME, zero manual DNS; slsv writes DNS via Cloudflare (env CLOUDFLARE_API_TOKEN) and auto-finds the owning zone from the domain; certArn reuses an existing cert. See "API custom domain" below. auth: { function, identitySource?, ttl? } = Lambda REQUEST authorizer protecting EVERY route (opt out per route with auth:false); function names a trigger-less fn returning { isAuthorized, context? }. See "API authorizer" below
+api: { cors?: false | [origin, ...] | { origins?, methods?, headers?, exposeHeaders?, credentials? }, domain?, certArn?, auth? } # cors: HTTP API CORS. false = disable gateway CORS (handler owns it). Array = AllowOrigins (omit → '*', methods/headers stay '*'). Object = full control; origins optional (declare shared cors in base, add per-stage origins). credentials:true (for fetch credentials:'include') forces explicit origins + concrete methods/headers ('*' or missing origins is invalid with credentials — deploy rejects it on --target aws; ignored on `slsv dev`, Floci owns CORS). exposeHeaders: response headers JS may read cross-origin. domain: custom API domain, aws-only, provisioned end-to-end — ACM DNS-validated cert (deploy region, NOT us-east-1) + regional custom domain + API mapping + public CNAME, zero manual DNS; slsv writes DNS via Cloudflare (env CLOUDFLARE_API_TOKEN) and auto-finds the owning zone from the domain; certArn reuses an existing cert. See "API custom domain" below. auth: { function, identitySource?, ttl? } = Lambda REQUEST authorizer protecting EVERY route (opt out per route with auth:false); function names a trigger-less fn returning { isAuthorized, context? }. See "API authorizer" below
 queues: { name: { type: sqs, fifo?: bool, visibilityTimeout?: secs, dlq?: name } }
 buckets: {
     name: {},

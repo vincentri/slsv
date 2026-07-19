@@ -64,10 +64,14 @@ api: # optional — HTTP API Gateway settings
   #       CANNOT combine with '*' (browsers reject it), so origins must be explicit and
   #       methods/headers default to concrete lists (override below if you need more):
   # cors:
-  #   origins: ["https://myapp.com"]
+  #   origins: ["https://myapp.com"]   # optional — omit to declare shared cors in the base and
+  #                                    #   add per-stage origins under stages.<name>.api.cors.
+  #                                    #   With credentials, missing/`*` origins error on deploy
+  #                                    #   (--target aws); ignored on `slsv dev` (Floci owns CORS).
   #   credentials: true
   #   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]   # optional
   #   headers: ["content-type", "authorization"]                     # optional
+  #   exposeHeaders: ["content-disposition"]                         # optional (response headers JS may read)
   # Custom domain for the API (aws-only). slsv does EVERYTHING: ACM cert (DNS-validated),
   # regional API Gateway custom domain, API mapping, and the public DNS record. Zero manual DNS.
   # You supply exactly two things:

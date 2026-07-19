@@ -1814,8 +1814,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_cli_src_cli",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "cli.ts"
     },
     {
@@ -1965,18 +1965,18 @@
       "label": "AppConfig",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L159",
+      "source_location": "L163",
       "_origin": "ast",
       "id": "packages_cli_src_config_appconfig",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "appconfig"
     },
     {
       "label": "DynamoDbDef",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L194",
+      "source_location": "L198",
       "_origin": "ast",
       "id": "packages_cli_src_config_dynamodbdef",
       "community": 4,
@@ -1987,7 +1987,7 @@
       "label": "FrontendDef",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L195",
+      "source_location": "L199",
       "_origin": "ast",
       "id": "packages_cli_src_config_frontenddef",
       "community": 1,
@@ -1998,7 +1998,7 @@
       "label": "dlqName()",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L204",
+      "source_location": "L208",
       "_origin": "ast",
       "id": "packages_cli_src_config_dlqname",
       "community": 57,
@@ -2009,7 +2009,7 @@
       "label": "deepMerge()",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L212",
+      "source_location": "L216",
       "_origin": "ast",
       "id": "packages_cli_src_config_deepmerge",
       "community": 4,
@@ -2020,18 +2020,18 @@
       "label": "loadConfig()",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L223",
+      "source_location": "L227",
       "_origin": "ast",
       "id": "packages_cli_src_config_loadconfig",
-      "community": 4,
-      "community_name": "CLI Bundler (adm-zip)",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "loadconfig()"
     },
     {
       "label": "ConfigError",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L268",
+      "source_location": "L272",
       "_origin": "ast",
       "id": "packages_cli_src_config_configerror",
       "community": 49,
@@ -2042,7 +2042,7 @@
       "label": ".constructor()",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L269",
+      "source_location": "L273",
       "_origin": "ast",
       "id": "packages_cli_src_config_configerror_constructor",
       "community": 49,
@@ -2056,8 +2056,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_cli_src_deploy_test",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "deploy.test.ts"
     },
     {
@@ -2067,8 +2067,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "packages_cli_src_deploy_test_tmp",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "tmp()"
     },
     {
@@ -2078,8 +2078,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_cli_src_deploy",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "deploy.ts"
     },
     {
@@ -2089,8 +2089,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "packages_cli_src_deploy_deployoutputs",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "deployoutputs"
     },
     {
@@ -2100,8 +2100,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "packages_cli_src_deploy_loadenv",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "loadenv()"
     },
     {
@@ -2111,8 +2111,8 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "packages_cli_src_deploy_hasresources",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "hasresources()"
     },
     {
@@ -2122,8 +2122,8 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "packages_cli_src_deploy_deploy",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "deploy()"
     },
     {
@@ -2133,8 +2133,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_cli_src_dev",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "dev.ts"
     },
     {
@@ -2144,8 +2144,8 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "packages_cli_src_dev_ensurefrontenddeps",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "ensurefrontenddeps()"
     },
     {
@@ -2155,8 +2155,8 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "packages_cli_src_dev_startdev",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "startdev()"
     },
     {
@@ -2210,8 +2210,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "packages_cli_src_init_template",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "template"
     },
     {
@@ -2221,8 +2221,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "packages_cli_src_init_stack",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "stack"
     },
     {
@@ -2309,8 +2309,8 @@
       "source_location": "L149",
       "_origin": "ast",
       "id": "packages_cli_src_init_initoutromessage",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "initoutromessage()"
     },
     {
@@ -2540,8 +2540,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_cli_src_program",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "program.ts"
     },
     {
@@ -2551,8 +2551,8 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "packages_cli_src_program_validstage",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "validstage()"
     },
     {
@@ -2562,8 +2562,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "packages_cli_src_program_runscaffold",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "runscaffold()"
     },
     {
@@ -2573,9 +2573,20 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "packages_cli_src_program_buildprogram",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "buildprogram()"
+    },
+    {
+      "label": "apigw.test.ts",
+      "file_type": "code",
+      "source_file": "packages/cli/src/providers/aws/apigw.test.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "packages_cli_src_providers_aws_apigw_test",
+      "community": 14,
+      "community_name": "API Gateway Auth & CORS",
+      "norm_label": "apigw.test.ts"
     },
     {
       "label": "apigw.ts",
@@ -2595,8 +2606,8 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_deletehttpapi",
-      "community": 14,
-      "community_name": "API Gateway Auth & CORS",
+      "community": 1,
+      "community_name": "Deploy Outputs & Envs",
       "norm_label": "deletehttpapi()"
     },
     {
@@ -2647,7 +2658,7 @@
       "label": "ensureHttpApi()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L120",
+      "source_location": "L134",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_ensurehttpapi",
       "community": 14,
@@ -2658,7 +2669,7 @@
       "label": "ensureStage()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L147",
+      "source_location": "L166",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_ensurestage",
       "community": 14,
@@ -2669,7 +2680,7 @@
       "label": "ensureLambdaIntegration()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L161",
+      "source_location": "L180",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_ensurelambdaintegration",
       "community": 14,
@@ -2680,7 +2691,7 @@
       "label": "ensureRoute()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L181",
+      "source_location": "L200",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_ensureroute",
       "community": 14,
@@ -2691,7 +2702,7 @@
       "label": "allowApiGatewayInvoke()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L232",
+      "source_location": "L251",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_allowapigatewayinvoke",
       "community": 14,
@@ -2702,7 +2713,7 @@
       "label": "ensureAuthorizer()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L266",
+      "source_location": "L285",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_ensureauthorizer",
       "community": 14,
@@ -2713,7 +2724,7 @@
       "label": "deleteAuthorizer()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L328",
+      "source_location": "L347",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_deleteauthorizer",
       "community": 14,
@@ -2724,7 +2735,7 @@
       "label": "listIntegrations()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L337",
+      "source_location": "L356",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_listintegrations",
       "community": 14,
@@ -2735,7 +2746,7 @@
       "label": "listRoutes()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L342",
+      "source_location": "L361",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_listroutes",
       "community": 14,
@@ -2746,7 +2757,7 @@
       "label": "toRouteKey()",
       "file_type": "code",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L347",
+      "source_location": "L366",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_apigw_toroutekey",
       "community": 14,
@@ -3255,8 +3266,8 @@
       "source_location": "L332",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_frontend_destroydistribution",
-      "community": 62,
-      "community_name": ".destroyResources",
+      "community": 1,
+      "community_name": "Deploy Outputs & Envs",
       "norm_label": "destroydistribution()"
     },
     {
@@ -3409,8 +3420,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_killflocicontainers",
-      "community": 62,
-      "community_name": ".destroyResources",
+      "community": 1,
+      "community_name": "Deploy Outputs & Envs",
       "norm_label": "killflocicontainers()"
     },
     {
@@ -3420,8 +3431,8 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_paginate",
-      "community": 62,
-      "community_name": ".destroyResources",
+      "community": 1,
+      "community_name": "Deploy Outputs & Envs",
       "norm_label": "paginate()"
     },
     {
@@ -3431,8 +3442,8 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "awsprovider"
     },
     {
@@ -3453,8 +3464,8 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_startlocalemulator",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".startlocalemulator()"
     },
     {
@@ -3464,8 +3475,8 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_destroyresources",
-      "community": 62,
-      "community_name": ".destroyResources",
+      "community": 1,
+      "community_name": "Deploy Outputs & Envs",
       "norm_label": ".destroyresources()"
     },
     {
@@ -3475,8 +3486,8 @@
       "source_location": "L344",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_emptyanddeletebucket",
-      "community": 62,
-      "community_name": ".destroyResources",
+      "community": 1,
+      "community_name": "Deploy Outputs & Envs",
       "norm_label": ".emptyanddeletebucket()"
     },
     {
@@ -3497,8 +3508,8 @@
       "source_location": "L377",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_reconcile",
-      "community": 62,
-      "community_name": ".destroyResources",
+      "community": 1,
+      "community_name": "Deploy Outputs & Envs",
       "norm_label": ".reconcile()"
     },
     {
@@ -3508,8 +3519,8 @@
       "source_location": "L562",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_setup",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".setup()"
     },
     {
@@ -3519,8 +3530,8 @@
       "source_location": "L580",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_ensurebuckets",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".ensurebuckets()"
     },
     {
@@ -3530,8 +3541,8 @@
       "source_location": "L584",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_ensurequeues",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".ensurequeues()"
     },
     {
@@ -3541,8 +3552,8 @@
       "source_location": "L596",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_ensuresecrets",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".ensuresecrets()"
     },
     {
@@ -3552,8 +3563,8 @@
       "source_location": "L600",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_ensurecaches",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".ensurecaches()"
     },
     {
@@ -3563,8 +3574,8 @@
       "source_location": "L617",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_ensuredatabases",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".ensuredatabases()"
     },
     {
@@ -3574,8 +3585,8 @@
       "source_location": "L647",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_deployfunctions",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".deployfunctions()"
     },
     {
@@ -3585,8 +3596,8 @@
       "source_location": "L679",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_updatefunctioncode",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".updatefunctioncode()"
     },
     {
@@ -3596,8 +3607,8 @@
       "source_location": "L688",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_wirehttp",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".wirehttp()"
     },
     {
@@ -3607,8 +3618,8 @@
       "source_location": "L711",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_wireapidomain",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".wireapidomain()"
     },
     {
@@ -3618,8 +3629,8 @@
       "source_location": "L720",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_wirequeues",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".wirequeues()"
     },
     {
@@ -3629,8 +3640,8 @@
       "source_location": "L726",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_wirecron",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".wirecron()"
     },
     {
@@ -3640,8 +3651,8 @@
       "source_location": "L751",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_deployfrontend",
-      "community": 36,
-      "community_name": "Roadmap Plans",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".deployfrontend()"
     },
     {
@@ -3651,8 +3662,8 @@
       "source_location": "L778",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_awsprovider_taillogs",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": ".taillogs()"
     },
     {
@@ -3662,8 +3673,8 @@
       "source_location": "L783",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_index_ensureflociavailable",
-      "community": 1,
-      "community_name": "Deploy Outputs & Envs",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "ensureflociavailable()"
     },
     {
@@ -3728,8 +3739,8 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_logs_deleteloggroup",
-      "community": 62,
-      "community_name": ".destroyResources",
+      "community": 1,
+      "community_name": "Deploy Outputs & Envs",
       "norm_label": "deleteloggroup()"
     },
     {
@@ -3926,8 +3937,8 @@
       "source_location": "L368",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_plan_renderplan",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "renderplan()"
     },
     {
@@ -4201,8 +4212,8 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "packages_cli_src_providers_aws_tags_slsvtags",
-      "community": 50,
-      "community_name": "deploy.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "slsvtags()"
     },
     {
@@ -6379,8 +6390,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_sdk_src_api_lambdaevent",
-      "community": 9,
-      "community_name": "HTTP API Handlers",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "lambdaevent"
     },
     {
@@ -6390,8 +6401,8 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "packages_sdk_src_api_apirequest",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "apirequest"
     },
     {
@@ -6434,8 +6445,8 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "packages_sdk_src_api_route",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "route"
     },
     {
@@ -6445,8 +6456,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "packages_sdk_src_api_routeoptions",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 9,
+      "community_name": "HTTP API Handlers",
       "norm_label": "routeoptions"
     },
     {
@@ -6478,8 +6489,8 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "packages_sdk_src_api_put",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "put()"
     },
     {
@@ -6489,8 +6500,8 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "packages_sdk_src_api_patch",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "patch()"
     },
     {
@@ -6500,8 +6511,8 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "packages_sdk_src_api_del",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "del()"
     },
     {
@@ -6709,8 +6720,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_sdk_src_index",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "index.ts"
     },
     {
@@ -6720,8 +6731,8 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "packages_sdk_src_index_db",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "db()"
     },
     {
@@ -6753,8 +6764,8 @@
       "source_location": "L55",
       "_origin": "ast",
       "id": "packages_sdk_src_index_cache",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 23,
+      "community_name": "Redis Cache Client",
       "norm_label": "cache()"
     },
     {
@@ -6819,8 +6830,8 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "packages_sdk_src_providers_aws_cache_makecache",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 23,
+      "community_name": "Redis Cache Client",
       "norm_label": "makecache()"
     },
     {
@@ -6830,8 +6841,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_sdk_src_providers_aws_db",
-      "community": 27,
-      "community_name": "DynamoDb Client Surface",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "db.ts"
     },
     {
@@ -6841,8 +6852,8 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "packages_sdk_src_providers_aws_db_doc",
-      "community": 27,
-      "community_name": "DynamoDb Client Surface",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "doc"
     },
     {
@@ -6852,8 +6863,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "packages_sdk_src_providers_aws_db_makedb",
-      "community": 26,
-      "community_name": "SQL Adapter (Demo)",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "makedb()"
     },
     {
@@ -7127,8 +7138,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "packages_sdk_src_types",
-      "community": 27,
-      "community_name": "DynamoDb Client Surface",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "types.ts"
     },
     {
@@ -7138,8 +7149,8 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "packages_sdk_src_types_item",
-      "community": 27,
-      "community_name": "DynamoDb Client Surface",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "item"
     },
     {
@@ -7149,8 +7160,8 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "packages_sdk_src_types_key",
-      "community": 27,
-      "community_name": "DynamoDb Client Surface",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "key"
     },
     {
@@ -7160,8 +7171,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "packages_sdk_src_types_queryoptions",
-      "community": 27,
-      "community_name": "DynamoDb Client Surface",
+      "community": 36,
+      "community_name": "Roadmap Plans",
       "norm_label": "queryoptions"
     },
     {
@@ -7666,8 +7677,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scripts_docs_cli",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "cli.ts"
     },
     {
@@ -7677,8 +7688,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "scripts_docs_cli_program",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "program"
     },
     {
@@ -7688,8 +7699,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "scripts_docs_cli_commands",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "commands"
     },
     {
@@ -7699,8 +7710,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "scripts_docs_cli_index",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "index"
     },
     {
@@ -7710,8 +7721,8 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "scripts_docs_cli_stripcolor",
-      "community": 46,
-      "community_name": "program.ts",
+      "community": 0,
+      "community_name": "Stack Deployment Core",
       "norm_label": "stripcolor()"
     },
     {
@@ -8164,6 +8175,17 @@
       "community": 15,
       "community_name": "Lambda Event Router",
       "norm_label": "includegroups"
+    },
+    {
+      "label": "dev-env-reload.md",
+      "file_type": "document",
+      "source_file": ".changeset/dev-env-reload.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "changeset_dev_env_reload",
+      "community": 46,
+      "community_name": "program.ts",
+      "norm_label": "dev-env-reload.md"
     },
     {
       "label": "legal-berries-say.md",
@@ -8656,8 +8678,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_services_api_gateway",
-      "community": 54,
-      "community_name": "lambda.md",
+      "community": 55,
+      "community_name": "API Gateway",
       "norm_label": "api-gateway.md"
     },
     {
@@ -9302,7 +9324,7 @@
       "label": "AppConfigSchema",
       "file_type": "code",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L199",
+      "source_location": "L203",
       "_origin": "ast",
       "id": "packages_cli_src_config_appconfigschema",
       "community": 63,
@@ -9320,8 +9342,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "slsv framework overview",
-      "id": "readme_slsv_framework",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "readme_slsv_framework"
     },
     {
       "label": "slsv.yml reference schema",
@@ -9334,8 +9356,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "slsv.yml reference schema",
-      "id": "readme_slsv_yml_reference",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "readme_slsv_yml_reference"
     },
     {
       "label": "slsv architecture decisions",
@@ -9348,8 +9370,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "slsv architecture decisions",
-      "id": "claude_slsv_architecture",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_slsv_architecture"
     },
     {
       "label": "Floci local AWS emulator",
@@ -9362,8 +9384,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "floci local aws emulator",
-      "id": "claude_floci_local_emulator",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_floci_local_emulator"
     },
     {
       "label": "Phase 1 services set",
@@ -9376,8 +9398,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "phase 1 services set",
-      "id": "claude_phase_1_services",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_phase_1_services"
     },
     {
       "label": "Cloud portability via env vars (DATABASE_<NAME>, QUEUE_<NAME>, ...)",
@@ -9390,8 +9412,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "cloud portability via env vars (database_<name>, queue_<name>, ...)",
-      "id": "claude_cloud_portability_env_vars",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_cloud_portability_env_vars"
     },
     {
       "label": "@slsv/sdk cloud-agnostic handler SDK",
@@ -9404,8 +9426,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "@slsv/sdk cloud-agnostic handler sdk",
-      "id": "claude_slsv_sdk",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_slsv_sdk"
     },
     {
       "label": "SDK router (zero-dep mini HTTP framework)",
@@ -9418,8 +9440,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "sdk router (zero-dep mini http framework)",
-      "id": "claude_sdk_router",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_sdk_router"
     },
     {
       "label": "Multi-store (multiple instances of same type)",
@@ -9432,8 +9454,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "multi-store (multiple instances of same type)",
-      "id": "claude_multi_store",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_multi_store"
     },
     {
       "label": "ElastiCache replication group provisioning",
@@ -9446,8 +9468,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "elasticache replication group provisioning",
-      "id": "claude_caches_locally_replication_group",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_caches_locally_replication_group"
     },
     {
       "label": "ElastiCache Serverless (aws-only)",
@@ -9460,8 +9482,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "elasticache serverless (aws-only)",
-      "id": "claude_elastiache_serverless",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_elastiache_serverless"
     },
     {
       "label": "Local valkey endpoint resolution via docker inspect",
@@ -9474,8 +9496,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "local valkey endpoint resolution via docker inspect",
-      "id": "claude_local_valkey_endpoint_resolution",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_local_valkey_endpoint_resolution"
     },
     {
       "label": "Databases locally (postgres/mysql liveness)",
@@ -9488,8 +9510,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "databases locally (postgres/mysql liveness)",
-      "id": "claude_databases_locally",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_databases_locally"
     },
     {
       "label": "AWS_ENDPOINT_URL injection for local target",
@@ -9502,8 +9524,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "aws_endpoint_url injection for local target",
-      "id": "claude_aws_endpoint_url",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_aws_endpoint_url"
     },
     {
       "label": "Secrets runtime fetch (never baked into env)",
@@ -9516,8 +9538,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "secrets runtime fetch (never baked into env)",
-      "id": "claude_secrets_runtime_fetch",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_secrets_runtime_fetch"
     },
     {
       "label": "Stages namespace (--stage default dev)",
@@ -9530,8 +9552,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "stages namespace (--stage default dev)",
-      "id": "claude_stages_namespace",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_stages_namespace"
     },
     {
       "label": "Per-stage config overlay (stages: deep-merge)",
@@ -9544,8 +9566,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "per-stage config overlay (stages: deep-merge)",
-      "id": "claude_per_stage_overlay",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_per_stage_overlay"
     },
     {
       "label": "Reconcile / orphan prune",
@@ -9558,8 +9580,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "reconcile / orphan prune",
-      "id": "claude_reconcile_orphan_prune",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_reconcile_orphan_prune"
     },
     {
       "label": "Drift model & slsv plan (two-way diff)",
@@ -9572,8 +9594,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "drift model & slsv plan (two-way diff)",
-      "id": "claude_drift_model",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_drift_model"
     },
     {
       "label": "IAM exec role (per app+stage)",
@@ -9586,8 +9608,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "iam exec role (per app+stage)",
-      "id": "claude_iam_exec_role",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_iam_exec_role"
     },
     {
       "label": "Resource tagging (slsv:managed-by/app/stage)",
@@ -9600,8 +9622,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "resource tagging (slsv:managed-by/app/stage)",
-      "id": "claude_tagging",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_tagging"
     },
     {
       "label": "Frontend \u2192 API wiring (VITE_SLSV_API_URL injection)",
@@ -9614,8 +9636,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "frontend \u2192 api wiring (vite_slsv_api_url injection)",
-      "id": "claude_frontend_api_wiring",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_frontend_api_wiring"
     },
     {
       "label": "HTTP API CORS config",
@@ -9628,8 +9650,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "http api cors config",
-      "id": "claude_cors",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_cors"
     },
     {
       "label": "CloudFront single-domain HTTPS (aws-only)",
@@ -9642,8 +9664,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "cloudfront single-domain https (aws-only)",
-      "id": "claude_cloudfront",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_cloudfront"
     },
     {
       "label": "API custom domain (Cloudflare-only, aws-only)",
@@ -9656,8 +9678,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "api custom domain (cloudflare-only, aws-only)",
-      "id": "claude_api_custom_domain",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_api_custom_domain"
     },
     {
       "label": "slsv destroy (discovery-based, prefix scan)",
@@ -9670,8 +9692,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "slsv destroy (discovery-based, prefix scan)",
-      "id": "claude_destroy_discovery",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_destroy_discovery"
     },
     {
       "label": "Provisioned concurrency (warm Lambdas)",
@@ -9684,8 +9706,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "provisioned concurrency (warm lambdas)",
-      "id": "claude_provisioned_concurrency",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_provisioned_concurrency"
     },
     {
       "label": "API authorizer (Lambda REQUEST)",
@@ -9698,8 +9720,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "api authorizer (lambda request)",
-      "id": "claude_api_authorizer",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_api_authorizer"
     },
     {
       "label": "Function triggers (http/queue/cron/event)",
@@ -9712,8 +9734,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "function triggers (http/queue/cron/event)",
-      "id": "claude_function_triggers",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_function_triggers"
     },
     {
       "label": "Templates (slsv init minimal/demo)",
@@ -9726,8 +9748,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "templates (slsv init minimal/demo)",
-      "id": "claude_templates_init",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_templates_init"
     },
     {
       "label": "pnpm-only toolchain + dangerouslyAllowAllBuilds",
@@ -9740,8 +9762,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "pnpm-only toolchain + dangerouslyallowallbuilds",
-      "id": "claude_pnpm_only_toolchain",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_pnpm_only_toolchain"
     },
     {
       "label": "Version-locked @slsv/sdk + slsv release",
@@ -9754,8 +9776,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "version-locked @slsv/sdk + slsv release",
-      "id": "claude_sdk_version_lock",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_sdk_version_lock"
     },
     {
       "label": "Preflight lint (handler/SDK names/triggers)",
@@ -9768,8 +9790,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "preflight lint (handler/sdk names/triggers)",
-      "id": "claude_preflight_lint",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_preflight_lint"
     },
     {
       "label": "CLI flag hardening (.allowExcessArguments + choices)",
@@ -9782,8 +9804,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "cli flag hardening (.allowexcessarguments + choices)",
-      "id": "claude_cli_flag_hardening",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_cli_flag_hardening"
     },
     {
       "label": "Critical files reference table",
@@ -9796,8 +9818,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "critical files reference table",
-      "id": "claude_critical_files_table",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_critical_files_table"
     },
     {
       "label": "esbuild bundling (no externals, minify, keepNames)",
@@ -9810,8 +9832,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "esbuild bundling (no externals, minify, keepnames)",
-      "id": "claude_esbuild_bundling",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "claude_esbuild_bundling"
     },
     {
       "label": "RTK (Rust Token Killer) token-optimized commands",
@@ -9824,8 +9846,8 @@
       "contributor": null,
       "community": 37,
       "norm_label": "rtk (rust token killer) token-optimized commands",
-      "id": "agents_rtk",
-      "community_name": "Agent Conventions"
+      "community_name": "Agent Conventions",
+      "id": "agents_rtk"
     },
     {
       "label": "graphify knowledge graph convention",
@@ -9838,8 +9860,8 @@
       "contributor": null,
       "community": 37,
       "norm_label": "graphify knowledge graph convention",
-      "id": "agents_graphify",
-      "community_name": "Agent Conventions"
+      "community_name": "Agent Conventions",
+      "id": "agents_graphify"
     },
     {
       "label": "AGENTS rule: schema change must sync slsv.example.yml",
@@ -9852,8 +9874,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "agents rule: schema change must sync slsv.example.yml",
-      "id": "agents_schema_sync_rule",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "agents_schema_sync_rule"
     },
     {
       "label": "@changesets/cli docs placeholder",
@@ -9866,8 +9888,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "@changesets/cli docs placeholder",
-      "id": "changeset_readme",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "changeset_readme"
     },
     {
       "label": "slsv.yml full reference (canonical schema)",
@@ -9880,8 +9902,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "slsv.yml full reference (canonical schema)",
-      "id": "cli_templates_slsv_example_yml",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "cli_templates_slsv_example_yml"
     },
     {
       "label": "demo template slsv.yml",
@@ -9894,8 +9916,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "demo template slsv.yml",
-      "id": "cli_templates_demo_slsv_yml",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "cli_templates_demo_slsv_yml"
     },
     {
       "label": "demo template AGENTS.md (how this slsv app works)",
@@ -9908,8 +9930,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "demo template agents.md (how this slsv app works)",
-      "id": "cli_templates_demo_agents",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "cli_templates_demo_agents"
     },
     {
       "label": "demo template pnpm-workspace.yaml (app root)",
@@ -9922,8 +9944,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "demo template pnpm-workspace.yaml (app root)",
-      "id": "cli_templates_demo_pnpm_workspace",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "cli_templates_demo_pnpm_workspace"
     },
     {
       "label": "demo frontend pnpm-workspace.yaml",
@@ -9936,8 +9958,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "demo frontend pnpm-workspace.yaml",
-      "id": "cli_templates_demo_frontend_pnpm_workspace",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "cli_templates_demo_frontend_pnpm_workspace"
     },
     {
       "label": "demo frontend index.html (Vite entry)",
@@ -9950,8 +9972,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "demo frontend index.html (vite entry)",
-      "id": "cli_templates_demo_frontend_index_html",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "cli_templates_demo_frontend_index_html"
     },
     {
       "label": "root pnpm-workspace.yaml (monorepo packages)",
@@ -9964,8 +9986,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "root pnpm-workspace.yaml (monorepo packages)",
-      "id": "pnpm_workspace_yaml",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "pnpm_workspace_yaml"
     },
     {
       "label": "cli package pnpm.yaml onlyBuiltDependencies (esbuild)",
@@ -9978,8 +10000,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "cli package pnpm.yaml onlybuiltdependencies (esbuild)",
-      "id": "packages_cli_pnpm_yaml",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "packages_cli_pnpm_yaml"
     },
     {
       "label": "@smithy/types dedupe override (rationale)",
@@ -9992,8 +10014,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "@smithy/types dedupe override (rationale)",
-      "id": "pnpm_smithy_types_dedupe",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "pnpm_smithy_types_dedupe"
     },
     {
       "label": "dangerouslyAllowAllBuilds: true",
@@ -10006,8 +10028,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "dangerouslyallowallbuilds: true",
-      "id": "concept_dangerously_allow_all_builds",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "concept_dangerously_allow_all_builds"
     },
     {
       "label": "@slsv/sdk dependency in scaffolds (file: link vs ^0.1.0)",
@@ -10020,8 +10042,8 @@
       "contributor": null,
       "community": 2,
       "norm_label": "@slsv/sdk dependency in scaffolds (file: link vs ^0.1.0)",
-      "id": "concept_sdk_dependency_scaffold",
-      "community_name": "Plan Docs & Rationale"
+      "community_name": "Plan Docs & Rationale",
+      "id": "concept_sdk_dependency_scaffold"
     }
   ],
   "links": [
@@ -11936,7 +11958,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L193",
+      "source_location": "L197",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config",
@@ -11969,7 +11991,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L268",
+      "source_location": "L272",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config",
@@ -11991,7 +12013,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L212",
+      "source_location": "L216",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config",
@@ -12002,7 +12024,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L204",
+      "source_location": "L208",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config",
@@ -12024,7 +12046,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L194",
+      "source_location": "L198",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config",
@@ -12046,7 +12068,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L195",
+      "source_location": "L199",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config",
@@ -12090,7 +12112,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L223",
+      "source_location": "L227",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config",
@@ -12188,6 +12210,18 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
+      "target": "packages_cli_src_config",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "packages/cli/src/providers/aws/apigw.test.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_cli_src_providers_aws_apigw_test",
       "target": "packages_cli_src_config",
       "confidence_score": 1.0
     },
@@ -12378,7 +12412,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L250",
+      "source_location": "L254",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config_loadconfig",
@@ -12845,7 +12879,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L240",
+      "source_location": "L244",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config_loadconfig",
@@ -12880,7 +12914,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/config.ts",
-      "source_location": "L269",
+      "source_location": "L273",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_config_configerror",
@@ -12920,6 +12954,18 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
+      "target": "packages_cli_src_config_configerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "packages/cli/src/providers/aws/apigw.test.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_cli_src_providers_aws_apigw_test",
       "target": "packages_cli_src_config_configerror",
       "confidence_score": 1.0
     },
@@ -14697,10 +14743,34 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "packages/cli/src/providers/aws/apigw.test.ts",
+      "source_location": "L2",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_cli_src_providers_aws_apigw_test",
+      "target": "packages_cli_src_providers_aws_apigw",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "packages/cli/src/providers/aws/apigw.test.ts",
+      "source_location": "L2",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "packages_cli_src_providers_aws_apigw_test",
+      "target": "packages_cli_src_providers_aws_apigw_buildcors",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L232",
+      "source_location": "L251",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14744,7 +14814,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L328",
+      "source_location": "L347",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14777,7 +14847,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L266",
+      "source_location": "L285",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14788,7 +14858,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L120",
+      "source_location": "L134",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14799,7 +14869,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L161",
+      "source_location": "L180",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14810,7 +14880,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L181",
+      "source_location": "L200",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14821,7 +14891,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L147",
+      "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14832,7 +14902,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L337",
+      "source_location": "L356",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14843,7 +14913,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L342",
+      "source_location": "L361",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -14854,7 +14924,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L347",
+      "source_location": "L366",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw",
@@ -15094,7 +15164,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L121",
+      "source_location": "L140",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw_ensurehttpapi",
@@ -15106,7 +15176,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L243",
+      "source_location": "L262",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw_allowapigatewayinvoke",
@@ -15118,7 +15188,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "packages/cli/src/providers/aws/apigw.ts",
-      "source_location": "L280",
+      "source_location": "L299",
       "weight": 1.0,
       "_origin": "ast",
       "source": "packages_cli_src_providers_aws_apigw_ensureauthorizer",
@@ -25131,5 +25201,5 @@
       "source_file": "packages/cli/templates/demo/slsv.yml"
     }
   ],
-  "built_at_commit": "b1d37d5ce951b927bf848bc2c7c7317404af6ec3"
+  "built_at_commit": "5ac1e1455b37ca6cd594f26eb82d897e42f28e11"
 }

@@ -1,16 +1,16 @@
 # Graph Report - slsv  (2026-07-19)
 
 ## Corpus Check
-- 122 files · ~54,227 words
+- 124 files · ~54,793 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 892 nodes · 1320 edges · 73 communities (62 shown, 11 thin omitted)
+- 894 nodes · 1324 edges · 71 communities (60 shown, 11 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 18 edges (avg confidence: 0.79)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b1d37d5c`
+- Built from commit: `5ac1e145`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -54,11 +54,9 @@
 - Roadmap Plans
 - Agent Conventions
 - Smoke Shell Script
-- program.ts
 - compilerOptions
 - Caches (ElastiCache)
 - lint.ts
-- deploy.ts
 - functions.ts
 - S3 buckets
 - Lambda
@@ -69,7 +67,6 @@
 - Architecture overview
 - Reconcile & prune
 - Getting started
-- .destroyResources
 - schema.ts
 - Stages & targets
 - slsv
@@ -97,12 +94,12 @@
   README.md → packages/cli/templates/slsv.example.yml
 - `@smithy/types dedupe override (rationale)` --semantically_similar_to--> `esbuild bundling (no externals, minify, keepNames)`  [INFERRED] [semantically similar]
   pnpm-workspace.yaml → CLAUDE.md
-- `buildProgram()` --indirect_call--> `cfg()`  [INFERRED]
-  packages/cli/src/program.ts → packages/cli/src/providers/aws/plan.test.ts
 - `slsv framework overview` --references--> `slsv architecture decisions`  [EXTRACTED]
   README.md → CLAUDE.md
 - `demo template AGENTS.md (how this slsv app works)` --references--> `SDK router (zero-dep mini HTTP framework)`  [EXTRACTED]
   packages/cli/templates/demo/AGENTS.md → CLAUDE.md
+- `demo template slsv.yml` --implements--> `Templates (slsv init minimal/demo)`  [INFERRED]
+  packages/cli/templates/demo/slsv.yml → CLAUDE.md
 
 ## Import Cycles
 - None detected.
@@ -112,15 +109,15 @@
 - **Floci local-emulator workarounds (endpoint + registry desyncs)** — claude_floci_local_emulator, claude_local_valkey_endpoint_resolution, claude_databases_locally, claude_aws_endpoint_url [INFERRED 0.85]
 - **demo template scaffolds (slsv.yml + pnpm-workspace + frontend HTML)** — cli_templates_demo_slsv_yml, cli_templates_demo_pnpm_workspace, cli_templates_demo_frontend_pnpm_workspace, cli_templates_demo_frontend_index_html, cli_templates_demo_agents, concept_dangerously_allow_all_builds [INFERRED 0.95]
 
-## Communities (73 total, 11 thin omitted)
+## Communities (71 total, 11 thin omitted)
 
 ### Community 0 - "Stack Deployment Core"
-Cohesion: 0.11
-Nodes (17): Clients, LOCAL_CFG, makeClients(), C, Change, ChangeAction, classify(), computePlan() (+9 more)
+Cohesion: 0.06
+Nodes (38): AppConfig, loadConfig(), deploy(), DeployOutputs, hasResources(), loadEnv(), ensureFrontendDeps(), startDev() (+30 more)
 
 ### Community 1 - "Deploy Outputs & Envs"
-Cohesion: 0.08
-Nodes (48): FrontendDef, envKey(), describeInstance(), ENGINE_CFG, ensureDbInstances(), isDbAlive(), runInitSql(), sleep() (+40 more)
+Cohesion: 0.07
+Nodes (52): FrontendDef, envKey(), deleteHttpApi(), describeInstance(), ENGINE_CFG, ensureDbInstances(), isDbAlive(), runInitSql() (+44 more)
 
 ### Community 2 - "Plan Docs & Rationale"
 Cohesion: 0.05
@@ -131,8 +128,8 @@ Cohesion: 0.04
 Nodes (47): @aws-sdk/client-acm, @aws-sdk/client-apigatewayv2, @aws-sdk/client-cloudfront, @aws-sdk/client-cloudwatch-logs, @aws-sdk/client-elasticache, @aws-sdk/client-eventbridge, @aws-sdk/client-iam, @aws-sdk/client-lambda (+39 more)
 
 ### Community 4 - "CLI Bundler (adm-zip)"
-Cohesion: 0.14
-Nodes (14): ApiConfig, BucketConfig, CacheConfig, DatabaseConfig, deepMerge(), DynamoDbConfig, DynamoDbDef, FrontendConfig (+6 more)
+Cohesion: 0.13
+Nodes (13): ApiConfig, BucketConfig, CacheConfig, DatabaseConfig, deepMerge(), DynamoDbConfig, DynamoDbDef, FrontendConfig (+5 more)
 
 ### Community 5 - "CLI Package Manifest"
 Cohesion: 0.05
@@ -171,8 +168,8 @@ Cohesion: 0.16
 Nodes (11): Link, shortId(), store, check, healthRoutes, create, linkRoutes, list (+3 more)
 
 ### Community 14 - "API Gateway Auth & CORS"
-Cohesion: 0.21
-Nodes (16): allowApiGatewayInvoke(), AuthConfig, buildCors(), CorsConfig, deleteAuthorizer(), deleteHttpApi(), ensureApiGateway(), ensureAuthorizer() (+8 more)
+Cohesion: 0.22
+Nodes (15): allowApiGatewayInvoke(), AuthConfig, buildCors(), CorsConfig, deleteAuthorizer(), ensureApiGateway(), ensureAuthorizer(), ensureHttpApi() (+7 more)
 
 ### Community 15 - "Lambda Event Router"
 Cohesion: 0.11
@@ -206,6 +203,10 @@ Nodes (10): compilerOptions, jsx, module, moduleResolution, noEmit, skipLibCheck
 Cohesion: 0.18
 Nodes (10): compilerOptions, esModuleInterop, module, moduleResolution, noEmit, skipLibCheck, strict, target (+2 more)
 
+### Community 23 - "Redis Cache Client"
+Cohesion: 0.18
+Nodes (4): cache(), clients, makeCache(), CacheClient
+
 ### Community 24 - "Changeset Config"
 Cohesion: 0.20
 Nodes (9): access, baseBranch, changelog, commit, fixed, ignore, linked, $schema (+1 more)
@@ -215,12 +216,8 @@ Cohesion: 0.28
 Nodes (5): api(), App(), Link, fetchMock, load()
 
 ### Community 26 - "SQL Adapter (Demo)"
-Cohesion: 0.16
-Nodes (15): ApiRequest, del(), patch(), put(), Route, RouteOptions, cache(), db() (+7 more)
-
-### Community 27 - "DynamoDb Client Surface"
-Cohesion: 0.17
-Nodes (5): doc, DbClient, Item, Key, QueryOptions
+Cohesion: 0.28
+Nodes (5): sql(), cache, makeSql(), SqlClient, resolve()
 
 ### Community 28 - "S3 PNG Smoke Seed"
 Cohesion: 0.32
@@ -239,12 +236,8 @@ Cohesion: 0.50
 Nodes (3): plugin, $schema, .opencode/plugins/graphify.js
 
 ### Community 36 - "Roadmap Plans"
-Cohesion: 0.30
-Nodes (3): AppConfig, deploy(), AwsProvider
-
-### Community 46 - "program.ts"
 Cohesion: 0.22
-Nodes (10): initOutroMessage(), Stack, Template, buildProgram(), runScaffold(), validStage(), renderPlan(), commands (+2 more)
+Nodes (12): ApiRequest, del(), LambdaEvent, patch(), put(), Route, db(), doc (+4 more)
 
 ### Community 47 - "compilerOptions"
 Cohesion: 0.14
@@ -257,10 +250,6 @@ Nodes (11): BYO / hosted DBs, Caches & Databases, Caches (ElastiCache), Database
 ### Community 49 - "lint.ts"
 Cohesion: 0.29
 Nodes (9): ConfigError, ACCESSOR_LABEL, exportsSymbol(), isScannable(), lintApp(), sdkImports(), SKIP_DIRS, sourceFiles() (+1 more)
-
-### Community 50 - "deploy.ts"
-Cohesion: 0.23
-Nodes (6): DeployOutputs, hasResources(), loadEnv(), ensureFrontendDeps(), startDev(), slsvTags()
 
 ### Community 51 - "functions.ts"
 Cohesion: 0.31
@@ -275,7 +264,7 @@ Cohesion: 0.22
 Nodes (9): Bundle + deploy, Declaring a function, Environment, IAM, Lambda, Logs, Pre-flight lint, Provisioned concurrency (+1 more)
 
 ### Community 55 - "API Gateway"
-Cohesion: 0.25
+Cohesion: 0.22
 Nodes (8): API Gateway, Authorizer (`api.auth`), CloudFront single-domain mode (`frontend.cloudfront: true`), CORS, Custom domain (`api.domain`, aws-only), Declaring routes, Frontend → API wiring, SDK quick reference
 
 ### Community 56 - "Queues & Events"
@@ -301,10 +290,6 @@ Nodes (7): Drift contract, Prune details, Reconcile & prune, `slsv destroy` (sep
 ### Community 61 - "Getting started"
 Cohesion: 0.29
 Nodes (7): Deploy to real AWS, Getting started, Install + dev, Prerequisites, Project layout, Scaffold, Tear down
-
-### Community 62 - ".destroyResources"
-Cohesion: 0.48
-Nodes (4): destroyDistribution(), killFlociContainers(), paginate(), deleteLogGroup()
 
 ### Community 63 - "schema.ts"
 Cohesion: 0.33
@@ -334,17 +319,17 @@ Nodes (3): Install, Quick start, @slsv/cli
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `asTagArray()` connect `Deploy Outputs & Envs` to `DynamoDb Client Surface`?**
-  _High betweenness centrality (0.085) - this node is a cross-community bridge._
-- **Why does `Key` connect `DynamoDb Client Surface` to `Deploy Outputs & Envs`, `SQL Adapter (Demo)`?**
+- **Why does `asTagArray()` connect `Deploy Outputs & Envs` to `Roadmap Plans`?**
+  _High betweenness centrality (0.084) - this node is a cross-community bridge._
+- **Why does `Key` connect `Roadmap Plans` to `Deploy Outputs & Envs`?**
   _High betweenness centrality (0.083) - this node is a cross-community bridge._
 - **Why does `dependencies` connect `AWS SDK Clients` to `functions.ts`, `CLI Package Manifest`?**
   _High betweenness centrality (0.080) - this node is a cross-community bridge._
 - **What connects `$schema`, `changelog`, `commit` to the rest of the system?**
   _367 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Stack Deployment Core` be split into smaller, more focused modules?**
-  _Cohesion score 0.1067193675889328 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.060153776571687016 - nodes in this community are weakly interconnected._
 - **Should `Deploy Outputs & Envs` be split into smaller, more focused modules?**
-  _Cohesion score 0.08038075092543628 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0733162830349531 - nodes in this community are weakly interconnected._
 - **Should `Plan Docs & Rationale` be split into smaller, more focused modules?**
   _Cohesion score 0.05357142857142857 - nodes in this community are weakly interconnected._

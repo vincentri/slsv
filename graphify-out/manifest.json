@@ -45,8 +45,8 @@
     "semantic_hash": ""
   },
   "packages/cli/package.json": {
-    "mtime": 1784453173.0310614,
-    "ast_hash": "7c1d56d53dd470be553f76520a21c709",
+    "mtime": 1784456228.7264397,
+    "ast_hash": "c807e9b7088b22d4f8d42b6ba1bc19ca",
     "semantic_hash": ""
   },
   "packages/cli/scripts/seed-s3.mjs": {
@@ -75,8 +75,8 @@
     "semantic_hash": "70cd9ea47fda6d04eb6c3608b5a436ee"
   },
   "packages/cli/src/config.ts": {
-    "mtime": 1784439067.969766,
-    "ast_hash": "d2d01463d6b8b8d6f41097673e2de7c7",
+    "mtime": 1784456576.4407918,
+    "ast_hash": "9a9c29b0098a4e1fcd78944b0f9110e0",
     "semantic_hash": ""
   },
   "packages/cli/src/deploy.ts": {
@@ -115,9 +115,9 @@
     "semantic_hash": "e6762c80ebad3c5c58c3cf36469b63d4"
   },
   "packages/cli/src/providers/aws/apigw.ts": {
-    "mtime": 1784051389.9573612,
-    "ast_hash": "d545c765f1ec38147bd153b3225ed568",
-    "semantic_hash": "d545c765f1ec38147bd153b3225ed568"
+    "mtime": 1784456633.3463805,
+    "ast_hash": "ab1d65a8eed15a720743aed5fad2d1f8",
+    "semantic_hash": ""
   },
   "packages/cli/src/providers/aws/clients.ts": {
     "mtime": 1783779297.9249258,
@@ -465,8 +465,8 @@
     "semantic_hash": "ee7f8da8dbf1e56238d932d47bed7ab5"
   },
   "AGENTS.md": {
-    "mtime": 1784456120.6613116,
-    "ast_hash": "9559267b91cdc8d439fd84cf2d2ae4e5",
+    "mtime": 1784456696.2877135,
+    "ast_hash": "3a12ee1d33e2ae93584795716a0da528",
     "semantic_hash": ""
   },
   "CLAUDE.md": {
@@ -510,9 +510,9 @@
     "semantic_hash": "b65d5d79cabb694c0b935c7ea68b2e72"
   },
   "packages/cli/templates/slsv.example.yml": {
-    "mtime": 1784119422.2928143,
-    "ast_hash": "d66f7bed1509ae914acb0b9b6dd832b9",
-    "semantic_hash": "d66f7bed1509ae914acb0b9b6dd832b9"
+    "mtime": 1784456663.8510315,
+    "ast_hash": "f2b193fd1f73fd84331a7139170d13d8",
+    "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
     "mtime": 1784385980.42478,
@@ -657,6 +657,16 @@
   "packages/sdk/README.md": {
     "mtime": 1784387863.5889864,
     "ast_hash": "27d528e3a011331ac518a63bd2091100",
+    "semantic_hash": ""
+  },
+  "packages/cli/src/providers/aws/apigw.test.ts": {
+    "mtime": 1784456644.561798,
+    "ast_hash": "9c576e25a42abb6ef3b6cdff303167b3",
+    "semantic_hash": ""
+  },
+  ".changeset/dev-env-reload.md": {
+    "mtime": 1784456166.4144797,
+    "ast_hash": "57867b473be45766f75952084a0d04d3",
     "semantic_hash": ""
   }
 }
