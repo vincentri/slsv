@@ -12,3 +12,4 @@ docs/reference/sdk/
 docs/reference/cli/
 docs/reference/slsv-yml.md
 site/
+graphify-out/*
