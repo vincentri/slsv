@@ -415,9 +415,12 @@ cert/domain-name/mapping). The cert **must be in the API's deploy region** (regi
 (reuse a pre-validated cert, e.g. a wildcard). Deploy wires it in `deploy.ts` after `wireHttp` and,
 when set, **replaces `apiUrl`** so the frontend build gets the custom domain injected
 (`VITE_SLSV_API_URL`). Skipped on `--target local` (Floci has no ACM/custom-domain API). Destroy is
-**yml-driven** (needs the domain config in the yml, unlike the discovery-based rest — so keep
-`api.domain` in slsv.yml when you destroy, else the domain isn't touched) and does **FULL cleanup,
-nothing left behind**: `DeleteDomainName` (cascades the mapping) → `DeleteCertificate` (the
+**discovery-based** (like the rest of destroy): `sweepApiDomains` enumerates every API-GW domain
+mapped to this app's API and tears each down, so a domain **already dropped from the yml is still
+removed** (previously destroy was yml-driven and skipped it). The yml is only consulted to honor a
+**BYO `certArn`** on the domain still in it (`opts.current`) — that cert is left alone; every other
+(old/dropped) domain is treated as slsv-minted. Each teardown is **FULL cleanup, nothing left
+behind**: `DeleteDomainName` (cascades the mapping) → `DeleteCertificate` (the
 slsv-minted ACM cert) → delete **both** Cloudflare records (public CNAME + the ACM validation
 CNAME). A **BYO `certArn`** and its validation record are **left** (the user's, not slsv's to
 delete). Order matters: domain name is deleted first so ACM releases the cert; the validation
@@ -440,10 +443,11 @@ full `destroyApiDomain` on it (old domain name + mapping + slsv-minted cert + bo
 records). Discovery-based so it doesn't need the old value from the yml. Safe for BYO certs: only a
 cert whose ACM `DomainName` exactly equals the old domain is deleted, so a wildcard
 (`*.myapp.com`) never matches. Prune failures warn + continue (a stray old domain can't block the
-deploy). Ceilings: reads one page of `GetDomainNames` (paginate if >100 domains); a BYO
-exact-match (non-wildcard) cert on the old domain WOULD be deleted; and **dropping `api.domain`
-entirely** still doesn't prune (prune runs only when a new domain is set — remove it via `slsv
-destroy` while the domain is still in the yml). (4) apex domains work but Cloudflare
+deploy). Dropping `api.domain` entirely (not changing it) isn't cleaned on *deploy* — prune runs
+only when a new domain is set — but `slsv destroy` removes it either way now (destroy is
+discovery-based, doesn't need the domain in the yml). Ceilings: reads one page of
+`GetDomainNames` (paginate if >100 domains); a BYO exact-match (non-wildcard) cert on the old
+domain WOULD be deleted. (4) apex domains work but Cloudflare
 CNAME-flattening is on the user; (5) shares one domain/stage — multi-stage on one domain
 (`api-prod`/`api-dev`) is the user's naming job.
 

@@ -12,7 +12,7 @@ import { ensureQueues, type QueueOutput } from "./sqs.js";
 import { ensureSecrets } from "./secrets.js";
 import { deployFunctions } from "./functions.js";
 import { ensureApiGateway, deleteHttpApi } from "./apigw.js";
-import { ensureApiDomain, destroyApiDomain } from "./domain.js";
+import { ensureApiDomain, sweepApiDomains } from "./domain.js";
 import { ensureCronTriggers, ensureEventTriggers } from "./eventbridge.js";
 import { ensureEventSourceMappings } from "./eventsource.js";
 import { tailLogs } from "./logs-tail.js";
@@ -144,10 +144,15 @@ export class AwsProvider {
     const lcPfx = pfx.toLowerCase();
 
     // Custom domain (aws-only) — delete before the API so the mapping goes with it; also
-    // removes the public CNAME. yml-driven (needs the domain + dns config), unlike the rest.
-    if (this.target === "aws" && cfg.api?.domain) {
+    // removes both Cloudflare records. Discovery-based (like the rest of destroy): sweeps EVERY
+    // domain mapped to this app's API, so a domain already dropped from the yml is still torn
+    // down. `current` forwards the yml api so a BYO certArn on the in-yml domain is honored.
+    if (this.target === "aws") {
       await step("API custom domain", () =>
-        destroyApiDomain(this.clients.apigw, this.clients.acm, cfg.api!),
+        sweepApiDomains(this.clients.apigw, this.clients.acm, appName, {
+          current: cfg.api ?? undefined,
+          blockOnError: true,
+        }).then(() => undefined),
       );
     }
 

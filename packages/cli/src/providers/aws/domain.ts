@@ -76,41 +76,53 @@ export async function ensureApiDomain(
   await cfUpsertCname(zoneId, domain, target, false);
 
   // Changed subdomain? Tear down the previous domain now mapped to this same API.
-  await pruneOldApiDomains(apigw, acm, appName, domain);
+  await sweepApiDomains(apigw, acm, appName, { keep: domain });
   return `https://${domain}`;
 }
 
-// After ensuring the current domain, tear down any OTHER custom domain still mapped to this
-// app's API — i.e. the old subdomain after `api.domain` is changed. Without this, a rename
-// orphans the old domain name + mapping + slsv-minted cert + both Cloudflare records forever
-// (destroy is yml-driven, so it only ever knows the current domain). Discovery-based: enumerate
-// domains, keep the ones mapped to our apiId, drop the current one. destroyApiDomain treats each
-// as slsv-minted (no certArn) — safe because it only deletes a cert whose ACM DomainName exactly
-// equals the old domain, so a BYO wildcard (DomainName `*.myapp.com`) never matches.
-// Failures warn and continue (a stray old domain must not block the deploy).
+// Discovery-based cleanup of custom domains mapped to this app's API — the single path for both
+// "changed subdomain" (deploy, keep the current one) and "destroy" (remove every one, even a
+// domain already dropped from the yml). Enumerates API-GW domains, keeps only those mapped to our
+// apiId, and tears each down via destroyApiDomain (name + mapping + cert + both Cloudflare
+// records). For the domain still in the yml we forward `opts.current` so its BYO `certArn` is
+// honored (cert left alone); every other (old/dropped) domain is treated as slsv-minted. That's
+// safe because destroyApiDomain only deletes a cert whose ACM DomainName EXACTLY equals the
+// domain, so a BYO wildcard (`*.myapp.com`) never matches.
+//   - deploy (opts.keep set): failures warn + continue — a stray old domain must not block a deploy.
+//   - destroy (opts.blockOnError): failures are collected and thrown so the destroy step reports ✗
+//     and the command exits non-zero (matches the rest of destroy), after attempting every domain.
 // ponytail: reads one page of GetDomainNames (paginate if an account fronts >100 domains); a BYO
-// exact-match (non-wildcard) cert on the old domain WOULD be deleted — rare, note it if hit.
-async function pruneOldApiDomains(
+// exact-match (non-wildcard) cert on an old domain WOULD be deleted — rare, note it if hit.
+export async function sweepApiDomains(
   apigw: ApiGatewayV2Client,
   acm: ACMClient,
   appName: string,
-  keepDomain: string,
-): Promise<void> {
+  opts: { keep?: string; current?: Api; blockOnError?: boolean } = {},
+): Promise<number> {
   const apis = await apigw.send(new GetApisCommand({}));
   const apiId = apis.Items?.find((a) => a.Name === appName)?.ApiId;
-  if (!apiId) return;
+  if (!apiId) return 0;
 
   const domains = await apigw.send(new GetDomainNamesCommand({}));
+  const failures: string[] = [];
+  let removed = 0;
   for (const d of domains.Items ?? []) {
     const name = d.DomainName;
-    if (!name || name === keepDomain) continue;
+    if (!name || name === opts.keep) continue;
     const mappings = await apigw.send(new GetApiMappingsCommand({ DomainName: name }));
     if (!mappings.Items?.some((m) => m.ApiId === apiId)) continue;
-    console.log(`  pruning old custom domain ${name} (replaced by ${keepDomain})`);
-    await destroyApiDomain(apigw, acm, { domain: name }).catch((e: any) =>
-      console.warn(`  ⚠ could not prune old domain ${name}: ${e?.message ?? e}`),
-    );
+    const api = opts.current?.domain === name ? opts.current : { domain: name };
+    console.log(opts.keep ? `  pruning old custom domain ${name} (replaced by ${opts.keep})` : `  removing custom domain ${name}`);
+    try {
+      await destroyApiDomain(apigw, acm, api);
+      removed++;
+    } catch (e: any) {
+      if (opts.blockOnError) failures.push(`${name}: ${e?.message ?? e}`);
+      else console.warn(`  ⚠ could not prune old domain ${name}: ${e?.message ?? e}`);
+    }
   }
+  if (failures.length) throw new Error(`failed to remove custom domain(s): ${failures.join("; ")}`);
+  return removed;
 }
 
 async function ensureCert(acm: ACMClient, domain: string, zoneId: string): Promise<string> {
