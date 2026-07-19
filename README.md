@@ -7,7 +7,7 @@ One config file. One command. Full AWS serverless stack running locally.
 app: my-app
 functions:
   api:
-    runtime: nodejs20
+    runtime: nodejs22
     handler: ./src/api.handler
     http:
       - method: GET
@@ -90,14 +90,19 @@ slsv dev
 
 1. Starts Floci (+ Valkey cache if caches declared)
 2. Deploys all resources (IAM, DynamoDB, S3, SQS, Lambda, API Gateway, EventBridge)
-3. Watches `src/` — file change → rebundle → hot-reload Lambda in ~1s
+3. Watches the project — a code change → rebundle → hot-reload Lambda in ~1s; a `.env*`
+   change → redeploy env/secrets so edited values take effect without a restart
+
+Runs under stage **`local`** (resources named `<app>-local-*`), kept separate from a real
+server `dev` stack. Every command takes `--stage <name>` to switch; `dev` defaults to `local`,
+all others default to `dev`.
 
 ---
 
 ## Other commands
 
 ```sh
-slsv deploy              # deploy to local (same as dev without watch)
+slsv deploy              # deploy to local, no watch (stage `dev` by default; add --stage local to match `slsv dev`)
 slsv deploy --target aws # deploy to real AWS (needs AWS_REGION + credentials)
 slsv logs api            # tail CloudWatch logs for function "api"
 slsv logs api -f         # follow (live tail)
@@ -113,7 +118,7 @@ app: my-app
 
 functions:
   api:
-    runtime: nodejs20
+    runtime: nodejs22
     handler: ./src/api.handler
     http: # HTTP trigger
       - method: GET
@@ -122,12 +127,12 @@ functions:
         path: /api/{proxy+}
 
   worker:
-    runtime: nodejs20
+    runtime: nodejs22
     handler: ./src/worker.handler
     queue: { name: jobs } # SQS trigger
 
   cron:
-    runtime: nodejs20
+    runtime: nodejs22
     handler: ./src/cron.handler
     cron: { schedule: "0 8 * * *" } # EventBridge cron (5-field)
 
@@ -236,15 +241,15 @@ await cache("ratelimit").incr("ip:1.2.3.4");
 ### After editing `packages/cli/`
 
 ```sh
-pnpm --filter slsv build       # rebuild CLI
+pnpm --filter @slsv/cli build       # rebuild CLI
 # OR for watch mode:
-pnpm --filter slsv dev         # tsx watch (no link update needed, runs directly)
+pnpm --filter @slsv/cli dev         # tsx watch (no link update needed, runs directly)
 ```
 
 If `slsv` binary on PATH needs updating:
 
 ```sh
-pnpm --filter slsv build:link  # rebuild + re-link global binary
+pnpm --filter @slsv/cli build:link  # rebuild + re-link global binary
 ```
 
 ### After editing `packages/sdk/`
@@ -264,7 +269,7 @@ pnpm lint    # type-check all packages
 ### Type-check only (fast)
 
 ```sh
-pnpm --filter slsv lint
+pnpm --filter @slsv/cli lint
 pnpm --filter @slsv/sdk lint
 ```
 
