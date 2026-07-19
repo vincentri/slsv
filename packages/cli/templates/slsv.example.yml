@@ -9,7 +9,7 @@ app: my-app
 
 functions:
   api:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./src/api.handler
     http:
       - method: ANY
@@ -29,19 +29,19 @@ functions:
     #   LOG_LEVEL: debug
 
   worker:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./src/worker.handler
     queue: { name: jobs } # SQS trigger — Lambda invoked per message
     #   queue: { name: jobs, maxConcurrency: 5 }  # cap parallel Lambda pollers (2-1000). Per-mapping,
     #                                              # doesn't consume the account's reserved-concurrency pool.
 
   cron:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./src/cron.handler
     cron: { schedule: "0 8 * * *" } # EventBridge — 5-field unix cron OR rate()
 
   onOrder:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./src/on-order.handler
     event: # EventBridge event-pattern — invoked when a matching event hits the default bus
       pattern:
@@ -49,7 +49,7 @@ functions:
         detail-type: ["order.placed"]
 
   authorizer:                          # a normal fn with NO trigger — referenced by `api.auth` below.
-    runtime: nodejs22                  #   API Gateway invokes it before every protected route.
+    runtime: nodejs24                  #   API Gateway invokes it before every protected route.
     handler: ./src/auth.handler        #   Return { isAuthorized: bool, context? } — deny → 403.
 
 api: # optional — HTTP API Gateway settings

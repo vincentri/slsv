@@ -2,7 +2,7 @@ app: demo
 
 functions:
   api:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./backend/routes/route.handler
     http:
       - method: ANY
@@ -13,20 +13,20 @@ functions:
         path: /health
 
   webhook:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./backend/webhooks/ping.handler
     http:
       - method: POST
         path: /webhooks/ping
 
   trackClick:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./backend/jobs/track-click.handler
     queue:
       name: clicks
 
   dailyReport:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./backend/jobs/daily-report.handler
     cron:
       schedule: "rate(1 minute)"

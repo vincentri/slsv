@@ -7,7 +7,7 @@ One config file. One command. Full AWS serverless stack running locally.
 app: my-app
 functions:
   api:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./src/api.handler
     http:
       - method: GET
@@ -118,7 +118,7 @@ app: my-app
 
 functions:
   api:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./src/api.handler
     http: # HTTP trigger
       - method: GET
@@ -127,12 +127,12 @@ functions:
         path: /api/{proxy+}
 
   worker:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./src/worker.handler
     queue: { name: jobs } # SQS trigger
 
   cron:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./src/cron.handler
     cron: { schedule: "0 8 * * *" } # EventBridge cron (5-field)
 

@@ -565,7 +565,7 @@ PutEvents via SDK/CLI onto the default bus.
 app: my-app
 functions:
   api:
-    runtime: nodejs22 # nodejs22 | nodejs24 — honored (maps to `<runtime>.x`); platform (AWS/Floci) must support it
+    runtime: nodejs24 # nodejs22 | nodejs24 — honored (maps to `<runtime>.x`); platform (AWS/Floci) must support it
     handler: ./src/api.handler # file.export
     http: [{ method, path, auth? }] # OR queue: { name } OR cron: { schedule } OR event: { pattern }. auth: false = leave this route public when api.auth is set
     # a trigger-less fn (handler only, no http/queue/cron/event) is valid — used as an api.auth authorizer

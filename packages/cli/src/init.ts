@@ -169,7 +169,7 @@ const MINIMAL_SLSV_YML = (name: string, stack: Stack = "fullstack") => {
   const backendBlock = `
 functions:
   api:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./backend/routes/route.handler
     http:
       - method: ANY
@@ -360,7 +360,7 @@ const API_DB_SLSV_YML = (name: string) => `app: ${name}
 
 functions:
   api:
-    runtime: nodejs22
+    runtime: nodejs24
     handler: ./backend/routes/route.handler
     http:
       - method: ANY
