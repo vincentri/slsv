@@ -19,7 +19,7 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsup",
-    "build:link": "npm run build && npm link",
+    "build:link": "npm run build && npm link --force",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
