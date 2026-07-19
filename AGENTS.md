@@ -432,10 +432,20 @@ stuck-in-use cert **throws** so the destroy step prints `✗` + exits non-zero i
 reporting done (only "already gone"/NotFound counts as success). ponytail ceilings: (1) Cloudflare
 only — Route53/other DNS = a future `dns.provider` field (dropped for now; `api.domain` alone
 implies Cloudflare); (2) `cfZoneIdForDomain` reads one page (`per_page=50`) — paginate if a token
-fronts >50 zones; (3) create-only for the domain config (a cert/endpoint-type change needs
-destroy+redeploy, same as CloudFront); (4) apex domains work but Cloudflare CNAME-flattening is on
-the user; (5) shares one domain/stage — multi-stage on one domain (`api-prod`/`api-dev`) is the
-user's naming job.
+fronts >50 zones; (3) create-only for a GIVEN domain's config (a cert/endpoint-type change on the
+SAME domain needs destroy+redeploy, same as CloudFront) — **but changing `api.domain` to a new
+subdomain IS handled**: after wiring the new domain, `ensureApiDomain` calls `pruneOldApiDomains`,
+which enumerates API-GW domains, finds any OTHER one still mapped to this app's API, and runs the
+full `destroyApiDomain` on it (old domain name + mapping + slsv-minted cert + both Cloudflare
+records). Discovery-based so it doesn't need the old value from the yml. Safe for BYO certs: only a
+cert whose ACM `DomainName` exactly equals the old domain is deleted, so a wildcard
+(`*.myapp.com`) never matches. Prune failures warn + continue (a stray old domain can't block the
+deploy). Ceilings: reads one page of `GetDomainNames` (paginate if >100 domains); a BYO
+exact-match (non-wildcard) cert on the old domain WOULD be deleted; and **dropping `api.domain`
+entirely** still doesn't prune (prune runs only when a new domain is set — remove it via `slsv
+destroy` while the domain is still in the yml). (4) apex domains work but Cloudflare
+CNAME-flattening is on the user; (5) shares one domain/stage — multi-stage on one domain
+(`api-prod`/`api-dev`) is the user's naming job.
 
 `slsv destroy [--stage] [--target local|aws]` tears the stack down. **Discovery-based, NOT
 yml-driven:** destroy ENUMERATES every resource deployed under the `<app>-<stage>-` prefix

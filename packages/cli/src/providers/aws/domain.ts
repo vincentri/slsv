@@ -2,6 +2,7 @@ import {
   ApiGatewayV2Client,
   GetApisCommand,
   GetDomainNameCommand,
+  GetDomainNamesCommand,
   CreateDomainNameCommand,
   DeleteDomainNameCommand,
   GetApiMappingsCommand,
@@ -73,7 +74,43 @@ export async function ensureApiDomain(
   // Point the public domain at the api-gw target (DNS-only, not proxied — user can enable
   // Cloudflare's proxy afterward once it verifies).
   await cfUpsertCname(zoneId, domain, target, false);
+
+  // Changed subdomain? Tear down the previous domain now mapped to this same API.
+  await pruneOldApiDomains(apigw, acm, appName, domain);
   return `https://${domain}`;
+}
+
+// After ensuring the current domain, tear down any OTHER custom domain still mapped to this
+// app's API — i.e. the old subdomain after `api.domain` is changed. Without this, a rename
+// orphans the old domain name + mapping + slsv-minted cert + both Cloudflare records forever
+// (destroy is yml-driven, so it only ever knows the current domain). Discovery-based: enumerate
+// domains, keep the ones mapped to our apiId, drop the current one. destroyApiDomain treats each
+// as slsv-minted (no certArn) — safe because it only deletes a cert whose ACM DomainName exactly
+// equals the old domain, so a BYO wildcard (DomainName `*.myapp.com`) never matches.
+// Failures warn and continue (a stray old domain must not block the deploy).
+// ponytail: reads one page of GetDomainNames (paginate if an account fronts >100 domains); a BYO
+// exact-match (non-wildcard) cert on the old domain WOULD be deleted — rare, note it if hit.
+async function pruneOldApiDomains(
+  apigw: ApiGatewayV2Client,
+  acm: ACMClient,
+  appName: string,
+  keepDomain: string,
+): Promise<void> {
+  const apis = await apigw.send(new GetApisCommand({}));
+  const apiId = apis.Items?.find((a) => a.Name === appName)?.ApiId;
+  if (!apiId) return;
+
+  const domains = await apigw.send(new GetDomainNamesCommand({}));
+  for (const d of domains.Items ?? []) {
+    const name = d.DomainName;
+    if (!name || name === keepDomain) continue;
+    const mappings = await apigw.send(new GetApiMappingsCommand({ DomainName: name }));
+    if (!mappings.Items?.some((m) => m.ApiId === apiId)) continue;
+    console.log(`  pruning old custom domain ${name} (replaced by ${keepDomain})`);
+    await destroyApiDomain(apigw, acm, { domain: name }).catch((e: any) =>
+      console.warn(`  ⚠ could not prune old domain ${name}: ${e?.message ?? e}`),
+    );
+  }
 }
 
 async function ensureCert(acm: ACMClient, domain: string, zoneId: string): Promise<string> {
