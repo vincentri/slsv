@@ -144,6 +144,12 @@ const ApiConfig = z.object({
   // ACM (e.g. a wildcard) instead of slsv minting one.
   domain: z.string().optional(),
   certArn: z.string().optional(),
+  // Base path to mount this app's API under `domain` (API Gateway v2 mapping key). Omit for a
+  // domain owned entirely by one app (mapping at the root). When set, multiple separate slsv apps
+  // can share one `domain`, each under its own path — e.g. `dev-api.example.com/qualify` and
+  // `/auth`. API Gateway STRIPS the base path before routing, so routes stay `/v1/{proxy+}`.
+  // Must not be empty (API GW rejects an empty mapping key) — omit the field for root.
+  basePath: z.string().min(1).optional(),
   // Lambda REQUEST authorizer. When set, EVERY http route is protected (opt a route out with
   // `auth: false`). `function` names a function (declared in `functions:`, no trigger of its
   // own) that API Gateway invokes before the route handler; it returns `{ isAuthorized: bool,

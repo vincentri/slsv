@@ -408,9 +408,25 @@ No zone field: `cfZoneIdForDomain` lists the token's zones and picks the one who
 of the domain (longest match — `api.myapp.com` → zone `myapp.com`). Flow on `--target aws`:
 `RequestCertificate` (DNS-validated ACM cert) → auto-write the validation CNAME in Cloudflare →
 poll `DescribeCertificate` to `ISSUED` (~1-5 min) → `CreateDomainName` (**REGIONAL**, `TLS_1_2`) →
-`CreateApiMapping` onto the app's `$default` stage → upsert the public CNAME → the api-gw target
+`CreateApiMapping` onto the app's `$default` stage (with `ApiMappingKey = api.basePath`, undefined
+= root) → upsert the public CNAME → the api-gw target
 (`d-xxx.execute-api…`, DNS-only/unproxied). Idempotent throughout (reuse existing
-cert/domain-name/mapping). The cert **must be in the API's deploy region** (regional endpoint) — so
+cert/domain-name/mapping).
+
+**Shared domain (`api.basePath`):** multiple separate slsv apps can share ONE `domain`, each
+mounted under its own base path (`api.x.com/qualify`, `/auth`, `/tender`) — the mapping key, NOT
+the route (API GW strips the base path, so every app keeps `path: /v1/{proxy+}`). Each app keeps
+its own slsv.yml/gateway/lifecycle; deploy order is irrelevant (first app provisions the
+domain+cert, the rest reuse by DomainName). Changing an app's `basePath` re-keys in place (delete
++ recreate the mapping). **Teardown is mapping-aware to avoid outaging siblings**
+(`destroyApiDomain(..., appName)`): it deletes only THIS app's mapping, then — if any other app is
+still mapped on the domain — **stops** (domain name, cert, and Cloudflare records are shared);
+only the LAST app out does the full `DeleteDomainName` + cert + CF teardown. A single-app domain
+(no `basePath`) is unchanged: its lone mapping deletes → 0 remaining → full teardown, exactly as
+before. `sweepApiDomains` forwards `appName` so both destroy and the rename-prune are shared-safe.
+ponytail: two apps deploying to a brand-new shared domain at the exact same instant race on
+`CreateDomainName` (both see it absent) — the loser errors, rerun fixes; not worth a lock for a
+manual multi-app deploy. The cert **must be in the API's deploy region** (regional endpoint) — so
 `clients.acm` tracks the app region, NOT the us-east-1 CloudFront uses. `api.certArn` skips ACM
 (reuse a pre-validated cert, e.g. a wildcard). Deploy wires it in `deploy.ts` after `wireHttp` and,
 when set, **replaces `apiUrl`** so the frontend build gets the custom domain injected
@@ -561,7 +577,7 @@ functions:
     reservedConcurrency?: 10 # PutFunctionConcurrency (separate call); 0 throttles all
     provisionedConcurrency?: 2 # warm instances (--target aws only); publishes a version + `live` alias, triggers point at the alias
     environment?: { KEY: value } # custom env; slsv bindings (DATABASE_*, etc) always win
-api: { cors?: false | [origin, ...] | { origins?, methods?, headers?, exposeHeaders?, credentials? }, domain?, certArn?, auth? } # cors: HTTP API CORS. false = disable gateway CORS (handler owns it). Array = AllowOrigins (omit → '*', methods/headers stay '*'). Object = full control; origins optional (declare shared cors in base, add per-stage origins). credentials:true (for fetch credentials:'include') forces explicit origins + concrete methods/headers ('*' or missing origins is invalid with credentials — deploy rejects it on --target aws; ignored on `slsv dev`, Floci owns CORS). exposeHeaders: response headers JS may read cross-origin. domain: custom API domain, aws-only, provisioned end-to-end — ACM DNS-validated cert (deploy region, NOT us-east-1) + regional custom domain + API mapping + public CNAME, zero manual DNS; slsv writes DNS via Cloudflare (env CLOUDFLARE_API_TOKEN) and auto-finds the owning zone from the domain; certArn reuses an existing cert. See "API custom domain" below. auth: { function, identitySource?, ttl? } = Lambda REQUEST authorizer protecting EVERY route (opt out per route with auth:false); function names a trigger-less fn returning { isAuthorized, context? }. See "API authorizer" below
+api: { cors?: false | [origin, ...] | { origins?, methods?, headers?, exposeHeaders?, credentials? }, domain?, basePath?, certArn?, auth? } # cors: HTTP API CORS. false = disable gateway CORS (handler owns it). Array = AllowOrigins (omit → '*', methods/headers stay '*'). Object = full control; origins optional (declare shared cors in base, add per-stage origins). credentials:true (for fetch credentials:'include') forces explicit origins + concrete methods/headers ('*' or missing origins is invalid with credentials — deploy rejects it on --target aws; ignored on `slsv dev`, Floci owns CORS). exposeHeaders: response headers JS may read cross-origin. domain: custom API domain, aws-only, provisioned end-to-end — ACM DNS-validated cert (deploy region, NOT us-east-1) + regional custom domain + API mapping + public CNAME, zero manual DNS; slsv writes DNS via Cloudflare (env CLOUDFLARE_API_TOKEN) and auto-finds the owning zone from the domain; certArn reuses an existing cert. basePath: mount this app under a path on `domain` (API-GW v2 mapping key) so multiple separate slsv apps SHARE one domain (`api.x.com/qualify`, `/auth`); API GW strips it so routes stay `/v1/{proxy+}`; omit for a single-app domain (root mapping); must be non-empty; destroy removes only this app's mapping and tears the domain/cert down with the LAST app out. See "API custom domain" below. auth: { function, identitySource?, ttl? } = Lambda REQUEST authorizer protecting EVERY route (opt out per route with auth:false); function names a trigger-less fn returning { isAuthorized, context? }. See "API authorizer" below
 queues: { name: { type: sqs, fifo?: bool, visibilityTimeout?: secs, dlq?: name } }
 buckets: {
     name: {},

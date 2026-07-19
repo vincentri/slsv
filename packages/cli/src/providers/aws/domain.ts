@@ -7,6 +7,7 @@ import {
   DeleteDomainNameCommand,
   GetApiMappingsCommand,
   CreateApiMappingCommand,
+  DeleteApiMappingCommand,
 } from "@aws-sdk/client-apigatewayv2";
 import {
   ACMClient,
@@ -64,10 +65,19 @@ export async function ensureApiDomain(
   const apis = await apigw.send(new GetApisCommand({}));
   const apiId = apis.Items?.find((a) => a.Name === appName)?.ApiId;
   if (!apiId) throw new Error(`custom domain ${domain}: HTTP API ${appName} not found`);
+  // Mount this app's API under its base path (undefined = root mapping, single-app domain). API GW
+  // strips the key before routing. Re-key in place if `basePath` changed for this app.
+  const key = api.basePath; // never "" — schema enforces min(1); API GW rejects an empty key
   const mappings = await apigw.send(new GetApiMappingsCommand({ DomainName: domain }));
-  if (!mappings.Items?.some((m) => m.ApiId === apiId)) {
+  const mine = mappings.Items?.find((m) => m.ApiId === apiId);
+  if (!mine) {
     await apigw.send(
-      new CreateApiMappingCommand({ DomainName: domain, ApiId: apiId, Stage: "$default" }),
+      new CreateApiMappingCommand({ DomainName: domain, ApiId: apiId, Stage: "$default", ApiMappingKey: key }),
+    );
+  } else if ((mine.ApiMappingKey ?? undefined) !== (key ?? undefined)) {
+    await apigw.send(new DeleteApiMappingCommand({ DomainName: domain, ApiMappingId: mine.ApiMappingId! }));
+    await apigw.send(
+      new CreateApiMappingCommand({ DomainName: domain, ApiId: apiId, Stage: "$default", ApiMappingKey: key }),
     );
   }
 
@@ -114,7 +124,9 @@ export async function sweepApiDomains(
     const api = opts.current?.domain === name ? opts.current : { domain: name };
     console.log(opts.keep ? `  pruning old custom domain ${name} (replaced by ${opts.keep})` : `  removing custom domain ${name}`);
     try {
-      await destroyApiDomain(apigw, acm, api);
+      // appName → mapping-aware: on a shared domain this only drops THIS app's mapping and keeps
+      // the domain/cert/CF records while siblings are still mounted.
+      await destroyApiDomain(apigw, acm, api, appName);
       removed++;
     } catch (e: any) {
       if (opts.blockOnError) failures.push(`${name}: ${e?.message ?? e}`);
@@ -161,18 +173,48 @@ async function ensureCert(acm: ACMClient, domain: string, zoneId: string): Promi
   throw new Error(`cert ${domain} not ISSUED after ~5min — check DNS validation`);
 }
 
-// Teardown: FULL cleanup — nothing left behind. Deletes the API GW custom domain name (cascades
-// its mapping), the slsv-minted ACM cert, and BOTH Cloudflare records (public CNAME + the ACM
-// validation CNAME). A BYO `certArn` and its validation record belong to the user, so those are
-// left. NOT best-effort/silent: a real failure (missing token, cert stuck in-use) THROWS so the
-// destroy step prints ✗ and exits non-zero — an earlier version swallowed everything and printed
-// a lying ✓ while records survived. Only "already gone" is treated as success (idempotent re-run).
+const getMappings = (apigw: ApiGatewayV2Client, domain: string) =>
+  apigw
+    .send(new GetApiMappingsCommand({ DomainName: domain }))
+    .then((r) => r.Items ?? [])
+    .catch((e: any) => {
+      if (e?.name === "NotFoundException") return [];
+      throw e;
+    });
+
+// Teardown. **Shared-domain-aware:** when `appName` is given, first delete only THIS app's mapping;
+// if any other app is still mapped on the domain, stop — the domain name, cert, and Cloudflare
+// records are shared, so tearing them down would outage siblings. Only when this app is the last
+// (or the sole) mapping does it do FULL cleanup: delete the API GW custom domain name (cascades the
+// mapping), the slsv-minted ACM cert, and BOTH Cloudflare records (public + ACM validation CNAME).
+// Single-app domains behave exactly as before (its mapping deleted → 0 remaining → full teardown).
+// A BYO `certArn` and its validation record belong to the user, so those are left. NOT
+// best-effort/silent: a real failure (missing token, cert stuck in-use) THROWS so the destroy step
+// prints ✗ and exits non-zero. Only "already gone" is treated as success (idempotent re-run).
 export async function destroyApiDomain(
   apigw: ApiGatewayV2Client,
   acm: ACMClient,
   api: Api,
+  appName?: string,
 ): Promise<void> {
   const domain = api.domain!;
+
+  // Remove only this app's mapping, then bail if siblings remain (shared domain).
+  if (appName) {
+    const apis = await apigw.send(new GetApisCommand({}));
+    const apiId = apis.Items?.find((a) => a.Name === appName)?.ApiId;
+    if (apiId) {
+      const mine = (await getMappings(apigw, domain)).find((m) => m.ApiId === apiId);
+      if (mine?.ApiMappingId) {
+        await apigw.send(new DeleteApiMappingCommand({ DomainName: domain, ApiMappingId: mine.ApiMappingId }));
+      }
+    }
+    const remaining = await getMappings(apigw, domain);
+    if (remaining.length > 0) {
+      console.log(`  kept shared custom domain ${domain} (${remaining.length} app(s) still mapped)`);
+      return;
+    }
+  }
 
   // Capture the slsv-minted cert + its validation record name BEFORE deleting anything (skip
   // when the user brought their own cert — not ours to delete).

@@ -84,6 +84,12 @@ api: # optional — HTTP API Gateway settings
   domain: api.myapp.com
   # certArn: arn:aws:acm:...:certificate/xxx   # rare — reuse an existing ACM cert instead of
   #                                            #        slsv minting one (e.g. a wildcard)
+  # basePath: myapp   # mount THIS app under a path on `domain` so multiple separate slsv apps can
+  #                   # share one domain — api.myapp.com/myapp/... , another app on /auth, etc.
+  #                   # API Gateway strips the base path, so routes stay /v1/{proxy+}. Omit for a
+  #                   # single-app domain (mapping at the root). Must not be empty. Destroying one
+  #                   # app removes only its mapping; the domain + cert are torn down by the LAST
+  #                   # app out.
   # Lambda authorizer — protect the API with your own auth. When set, EVERY http route is
   # guarded (opt one out with `auth: false` on the route, e.g. /health above). `function` names
   # the trigger-less fn above that API Gateway invokes first; it returns
