@@ -8,7 +8,7 @@ import {
   PutFunctionConcurrencyCommand,
   PublishVersionCommand,
   CreateAliasCommand,
-  UpdateAliasCommand,
+  DeleteAliasCommand,
   PutProvisionedConcurrencyConfigCommand,
   ListVersionsByFunctionCommand,
   DeleteFunctionCommand,
@@ -154,24 +154,17 @@ export async function deployFunctions(
       const published = await lambda.send(new PublishVersionCommand({ FunctionName: fnName }));
       const version = published.Version!;
 
-      try {
-        await lambda.send(
-          new CreateAliasCommand({ FunctionName: fnName, Name: "live", FunctionVersion: version }),
-        );
-      } catch (e: any) {
-        if (e.name !== "ResourceConflictException") throw e;
-        await lambda.send(
-          // Clear any stale routing weights on the existing alias — a weighted
-          // alias can't have Provisioned Concurrency attached (AWS rejects it),
-          // and UpdateAlias leaves an existing RoutingConfig intact otherwise.
-          new UpdateAliasCommand({
-            FunctionName: fnName,
-            Name: "live",
-            FunctionVersion: version,
-            RoutingConfig: { AdditionalVersionWeights: {} },
-          }),
-        );
-      }
+      // Recreate the `live` alias from scratch each deploy. An existing alias can
+      // carry stale config (e.g. a RoutingConfig with version weights) that AWS
+      // refuses to attach Provisioned Concurrency to, and UpdateAlias can't
+      // reliably strip it. Delete + create guarantees a clean alias. The alias ARN
+      // is name-based (…:function:name:live), so already-wired triggers stay valid.
+      await lambda
+        .send(new DeleteAliasCommand({ FunctionName: fnName, Name: "live" }))
+        .catch(() => {}); // absent on first deploy — fine
+      await lambda.send(
+        new CreateAliasCommand({ FunctionName: fnName, Name: "live", FunctionVersion: version }),
+      );
 
       await lambda.send(
         new PutProvisionedConcurrencyConfigCommand({
