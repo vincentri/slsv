@@ -161,7 +161,15 @@ export async function deployFunctions(
       } catch (e: any) {
         if (e.name !== "ResourceConflictException") throw e;
         await lambda.send(
-          new UpdateAliasCommand({ FunctionName: fnName, Name: "live", FunctionVersion: version }),
+          // Clear any stale routing weights on the existing alias — a weighted
+          // alias can't have Provisioned Concurrency attached (AWS rejects it),
+          // and UpdateAlias leaves an existing RoutingConfig intact otherwise.
+          new UpdateAliasCommand({
+            FunctionName: fnName,
+            Name: "live",
+            FunctionVersion: version,
+            RoutingConfig: { AdditionalVersionWeights: {} },
+          }),
         );
       }
 
