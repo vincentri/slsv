@@ -30,7 +30,10 @@ export function makeClients(target: "local" | "aws" = "local") {
     dynamo: new DynamoDBClient(cfg),
     elasticache: new ElastiCacheClient(cfg),
     rds: new RDSClient(cfg),
-    s3: new S3Client(cfg),
+    // followRegionRedirects: a bucket created under a different region (region changed between
+    // deploys) returns S3 PermanentRedirect (301); this auto-retries against the bucket's real
+    // region instead of throwing. ponytail: only S3 needs it (region-pinned buckets).
+    s3: new S3Client({ ...cfg, followRegionRedirects: true }),
     secrets: new SecretsManagerClient(cfg),
     iam: new IAMClient(cfg),
     logs: new CloudWatchLogsClient(cfg),
