@@ -5,12 +5,15 @@ import { readFileSync } from "node:fs";
 // against — changesets bumps packages/sdk/package.json and it propagates automatically,
 // no hardcoded string to keep in sync.
 const sdkVersion = JSON.parse(readFileSync("../sdk/package.json", "utf8")).version;
+// Inline this CLI's own version so `slsv --version` tracks package.json (changesets bumps it),
+// instead of a hardcoded string that goes stale.
+const cliVersion = JSON.parse(readFileSync("./package.json", "utf8")).version;
 
 export default defineConfig({
   entry: ["src/cli.ts"],
   format: ["esm"],
   target: "node20",
   banner: { js: "#!/usr/bin/env node" },
-  define: { __SDK_VERSION__: JSON.stringify(sdkVersion) },
+  define: { __SDK_VERSION__: JSON.stringify(sdkVersion), __CLI_VERSION__: JSON.stringify(cliVersion) },
   clean: true,
 });

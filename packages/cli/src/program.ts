@@ -8,6 +8,9 @@ import { deploy } from "./deploy.js";
 import { startDev } from "./dev.js";
 import { initScaffold, initOutroMessage, type Template, type Stack } from "./init.js";
 
+// Inlined by tsup from packages/cli/package.json — tracks the changesets bump automatically.
+declare const __CLI_VERSION__: string;
+
 export function validStage(stage: string): string {
   if (!/^[a-z0-9-]+$/.test(stage)) {
     console.error(`Invalid --stage "${stage}": use lowercase letters, digits, and hyphens only.`);
@@ -28,7 +31,7 @@ function runScaffold(name: string, cwd: string, template: Template, stack: Stack
 export function buildProgram(): Command {
   const program = new Command();
 
-  program.name("slsv").description("Simple local-AWS serverless framework").version("0.0.1");
+  program.name("slsv").description("Simple local-AWS serverless framework").version(__CLI_VERSION__);
 
   program
     .command("init [name]")
