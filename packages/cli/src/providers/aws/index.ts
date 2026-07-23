@@ -512,8 +512,15 @@ export class AwsProvider {
     // orphan scan below (slsv owns them).
     const frontendBucket = `${lcPrefix}frontend`;
     if (!cfg.frontend) {
-      if (await this.emptyAndDeleteBucket(frontendBucket))
-        console.log(`→ Reconcile: pruned frontend bucket ${frontendBucket}`);
+      // Best-effort: a stray/cross-account/permission-denied leftover bucket must NOT abort an
+      // already-successful deploy. Warn + continue (surfaced, not silent); `slsv destroy` / a
+      // manual delete is the authoritative teardown. ponytail: only GONE was tolerated before —
+      // an AccessDenied on a leftover frontend bucket crashed the whole deploy in reconcile.
+      await this.emptyAndDeleteBucket(frontendBucket)
+        .then((removed) => {
+          if (removed) console.log(`→ Reconcile: pruned frontend bucket ${frontendBucket}`);
+        })
+        .catch((e: any) => console.warn(`  ⚠ could not prune frontend bucket ${frontendBucket}: ${e?.message ?? e}`));
       // ponytail: destroyDistribution disables→waits→deletes (~15-20 min), but only on the one
       // redeploy that drops frontend; idempotent by Comment (fast no-op when none exists).
       await destroyDistribution(this.clients.cloudfront, `${cfg.app}-${stage}`).catch((e) => {
