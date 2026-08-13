@@ -69,18 +69,19 @@ One `slsv.yml` describes the whole app. `slsv dev` brings the entire stack up on
 ## Publishing (release)
 
 Two packages ship to npm: `@slsv/sdk` (scope `@slsv` — npm org owned by `vincent.ri`) and
-`slsv` (CLI). They're **version-locked** (changesets `fixed`) — always released together at
+`@slsv/cli` (CLI, binary `slsv`). They're **version-locked** (changesets `fixed`) — always released together at
 the same version. Managed by **changesets**:
 
 ```
 pnpm changeset          # describe a change, pick bump (patch/minor/major)
 pnpm version-packages   # apply: bumps both package.jsons + changelogs
-pnpm release            # pnpm build && changeset publish
+pnpm release            # pnpm build && pnpm -r publish --access public --no-git-checks
 ```
 
-`changeset publish` publishes in dependency order and rewrites the CLI's
-`@slsv/sdk: workspace:*` → the real version (never `npm publish` — it ships a literal
-`workspace:*`). Versions are immutable: every release needs a new number (changesets handles
+`pnpm release` uses `pnpm -r publish`, NOT `changeset publish` (changesets 2.31.0's
+publisher masks real publish errors as a cryptic TypeError — see release.yml). pnpm
+publishes in dependency order and rewrites the CLI's `@slsv/sdk: workspace:*` → the real
+version (never `npm publish` — it ships a literal `workspace:*`). Versions are immutable: every release needs a new number (changesets handles
 it). `access: public` is set (scoped package). The `init.ts` SDK fallback is **auto-synced** —
 `tsup.config.ts` inlines `packages/sdk/package.json` version as `__SDK_VERSION__`, so a bump
 propagates to scaffolds with no manual edit. From a source checkout, `sdkDependency()` still
@@ -106,7 +107,7 @@ end-to-end against Floci alone.
 ## Monorepo (pnpm workspaces)
 
 ```
-packages/cli/    # name: "slsv"       — CLI tool (commander), deployer, bundler, dev loop
+packages/cli/    # name: "@slsv/cli"  — CLI tool (commander), deployer, bundler, dev loop
 packages/sdk/    # name: "@slsv/sdk"  — cloud-agnostic handler SDK (db/queue/storage/cache/secret)
 # packages/ui/   — PLANNED, NOT IN REPO. React dashboard + `slsv ui` command do not exist yet.
 packages/cli/templates/demo/         — canonical reference app (scaffolded by `slsv init --demo`)
