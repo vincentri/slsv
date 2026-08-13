@@ -1,5 +1,21 @@
 # @slsv/cli
 
+## 0.1.4
+
+### Patch Changes
+
+- 3b1116d: `slsv --version` now reports the real package version (tsup inlines it from
+  package.json at build) instead of a hardcoded `0.0.1` that never got bumped.
+- 928772b: Reconcile no longer aborts a successful deploy when it can't prune a leftover
+  `<app>-<stage>-frontend` bucket. A cross-account / permission-denied stray bucket
+  now warns and continues instead of throwing; `slsv destroy` remains the
+  authoritative teardown.
+- 2a93bdb: Fix `PermanentRedirect` (301) crash on deploy when a leftover `<app>-<stage>-frontend`
+  bucket lives in a different region than the current deploy (region changed between deploys).
+  The S3 client now sets `followRegionRedirects: true`, so reconcile can reach across and
+  delete the stray bucket instead of throwing.
+  - @slsv/sdk@0.1.4
+
 ## 0.1.3
 
 ### Patch Changes
