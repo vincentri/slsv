@@ -7,6 +7,7 @@ import { renderPlan } from "./providers/aws/plan.js";
 import { deploy } from "./deploy.js";
 import { startDev } from "./dev.js";
 import { initScaffold, initOutroMessage, type Template, type Stack } from "./init.js";
+import { runUpgrade } from "./upgrade.js";
 
 // Inlined by tsup from packages/cli/package.json — tracks the changesets bump automatically.
 declare const __CLI_VERSION__: string;
@@ -248,6 +249,19 @@ export function buildProgram(): Command {
       console.log(`Deleting ${cfg.app}-${stage}-* on ${opts.target}...`);
       await provider.destroyResources(cfg, stage);
       console.log("Resources deleted.");
+    });
+
+  program
+    .command("upgrade")
+    .description("Update the globally installed CLI to the latest version")
+    .allowExcessArguments(false)
+    .option("--force", "Reinstall even when already on the latest version", false)
+    .action(async (opts: { force: boolean }) => {
+      await runUpgrade({
+        moduleUrl: import.meta.url,
+        currentVersion: __CLI_VERSION__,
+        force: opts.force,
+      });
     });
 
   return program;
