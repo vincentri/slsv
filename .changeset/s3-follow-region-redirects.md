@@ -1,5 +1,5 @@
 ---
-"slsv": patch
+"@slsv/cli": patch
 ---
 
 Fix `PermanentRedirect` (301) crash on deploy when a leftover `<app>-<stage>-frontend`

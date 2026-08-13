@@ -1,5 +1,5 @@
 ---
-"slsv": patch
+"@slsv/cli": patch
 ---
 
 `slsv --version` now reports the real package version (tsup inlines it from

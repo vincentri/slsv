@@ -1,5 +1,5 @@
 ---
-"slsv": patch
+"@slsv/cli": patch
 ---
 
 Reconcile no longer aborts a successful deploy when it can't prune a leftover
