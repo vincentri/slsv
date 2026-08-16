@@ -37,7 +37,7 @@ slsv plan --target aws       # against real AWS
 | Frontend (S3 + CloudFront) | **always pruned** (build artifact, re-created every deploy) |
 | DynamoDB / S3 / RDS | report-only by default; **`delete` only under `autoRemove: true`** |
 | SQS queues | never pruned by reconcile; `slsv destroy` only |
-| Secrets | never pruned by reconcile; `slsv destroy` only |
+| Secrets | report-only by default; **`delete` only under `autoRemove: true`** (ForceDeleteWithoutRecovery) |
 | Caches | never pruned by reconcile; `slsv destroy` only |
 
 Default is safe-for-prod: dropping a store from the yml can't silently take its data with it. Set `autoRemove: true` to opt into destructive deletes on deploy.
