@@ -35,6 +35,7 @@ const hasResources = (cfg: AppConfig) =>
   Object.keys(cfg.queues ?? {}).length > 0 ||
   Object.keys(cfg.buckets ?? {}).length > 0 ||
   Object.keys(cfg.caches ?? {}).length > 0 ||
+  Object.keys(cfg.workers ?? {}).length > 0 ||
   (cfg.secrets?.length ?? 0) > 0;
 
 export async function deploy(
@@ -75,7 +76,7 @@ export async function deploy(
       provider.ensureDatabases(cfg.databases, prefix, cwd),
     ]);
 
-    const allEnvs = {
+    const storeEnvs = {
       ...bucketEnvs,
       ...queueEnvs,
       ...secretEnvs,
@@ -83,6 +84,13 @@ export async function deploy(
       ...dbEnvs,
       SLSV_STAGE: stage,
     };
+
+    // Workers before functions, both ways round: the task definition needs the store bindings,
+    // and the functions that call `worker('x').run()` need WORKER_X in their env.
+    if (Object.keys(cfg.workers ?? {}).length) console.log("→ Workers");
+    const workerEnvs = await provider.ensureWorkers(cfg.workers, prefix, cwd, storeEnvs);
+
+    const allEnvs = { ...storeEnvs, ...workerEnvs };
 
     if (Object.keys(functions).length) console.log("→ Functions");
     const fnOutputs = await provider.deployFunctions(functions, prefix, allEnvs, cwd);

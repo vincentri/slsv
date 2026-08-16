@@ -12,6 +12,7 @@ import { DescribeReplicationGroupsCommand } from "@aws-sdk/client-elasticache";
 import type { AppConfig } from "../../config.js";
 import { dlqName } from "../../config.js";
 import type { Clients } from "./clients.js";
+import { listWorkerFamilies } from "./workers.js";
 import { paginate } from "./index.js";
 
 // `slsv plan`: two-way diff (yml desired vs AWS actual — slsv keeps no state file). Read-only;
@@ -53,6 +54,7 @@ export interface LiveState {
   queues: string[]; // full names incl any .fifo suffix
   secrets: string[]; // full names
   caches: string[]; // full names (replication group ids)
+  workers: string[]; // task-definition family names
 }
 
 const DEFAULTS = {
@@ -240,6 +242,17 @@ export function classify(
     live.caches,
   );
 
+  // --- Workers (presence; cpu/memory diff is follow-up). Build artifacts → always pruned. ---
+  // A deploy re-registers a task definition unconditionally, so "update" would fire every run
+  // and mean nothing; only presence is worth reporting until the container config is diffed.
+  diff(
+    "worker",
+    new Map(Object.keys(cfg.workers ?? {}).map((n) => [`${pfx}${n}`, n])),
+    live.workers,
+    undefined,
+    "prune",
+  );
+
   return { changes };
 }
 
@@ -254,7 +267,7 @@ export async function computePlan(
   const owned = (n?: string): n is string => !!n && n.startsWith(pfx);
   const frontendBucket = `${lcPfx}frontend`;
 
-  const [fnList, tableNames, dbList, bucketList, queueUrls, secretList, cacheList] =
+  const [fnList, tableNames, dbList, bucketList, queueUrls, secretList, cacheList, workers] =
     await Promise.all([
       paginate((Marker) =>
         clients.lambda
@@ -286,6 +299,7 @@ export async function computePlan(
         .send(new DescribeReplicationGroupsCommand({}))
         .then((r) => r.ReplicationGroups ?? [])
         .catch(() => []),
+      listWorkerFamilies(clients.ecs, pfx).catch(() => [] as string[]),
     ]);
 
   const functions = fnList
@@ -337,6 +351,7 @@ export async function computePlan(
     queues,
     secrets,
     caches,
+    workers,
   });
 }
 

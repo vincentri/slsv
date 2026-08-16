@@ -137,7 +137,9 @@ export async function sweepApiDomains(
   return removed;
 }
 
-async function ensureCert(acm: ACMClient, domain: string, zoneId: string): Promise<string> {
+// Shared with frontend.ts (frontend.domain) — the us-east-1 CloudFront cert follows the exact
+// same request/validate/poll flow, just on a different ACM client.
+export async function ensureCert(acm: ACMClient, domain: string, zoneId: string): Promise<string> {
   // Reuse a cert already requested for this exact domain, else request one (DNS validation).
   const list = await acm.send(new ListCertificatesCommand({ MaxItems: 100 }));
   let arn = list.CertificateSummaryList?.find((c) => c.DomainName === domain)?.CertificateArn;
@@ -218,17 +220,7 @@ export async function destroyApiDomain(
 
   // Capture the slsv-minted cert + its validation record name BEFORE deleting anything (skip
   // when the user brought their own cert — not ours to delete).
-  let certArn: string | undefined;
-  let validationName: string | undefined;
-  if (!api.certArn) {
-    const list = await acm.send(new ListCertificatesCommand({ MaxItems: 100 }));
-    certArn = list.CertificateSummaryList?.find((c) => c.DomainName === domain)?.CertificateArn;
-    if (certArn) {
-      const rr = (await acm.send(new DescribeCertificateCommand({ CertificateArn: certArn })))
-        .Certificate?.DomainValidationOptions?.[0]?.ResourceRecord;
-      if (rr?.Name) validationName = stripDot(rr.Name);
-    }
-  }
+  const minted = api.certArn ? undefined : await findMintedCert(acm, domain);
 
   // Domain name first — releases the cert so ACM will let us delete it.
   await apigw.send(new DeleteDomainNameCommand({ DomainName: domain })).catch((e: any) => {
@@ -240,14 +232,31 @@ export async function destroyApiDomain(
   // cfDeleteByName is a no-op when the record is already gone.
   const zoneId = await cfZoneIdForDomain(domain);
   await cfDeleteByName(zoneId, domain);
-  if (validationName) await cfDeleteByName(zoneId, validationName);
+  if (minted?.validationName) await cfDeleteByName(zoneId, minted.validationName);
 
   // DeleteCertificate races the domain-name release — API Gateway frees the cert only
   // eventually (seconds–minutes), so a one-shot delete hits ResourceInUse. Retry until it frees.
-  if (certArn) await deleteCertWhenFree(acm, certArn);
+  if (minted) await deleteCertWhenFree(acm, minted.arn);
 }
 
-async function deleteCertWhenFree(acm: ACMClient, arn: string): Promise<void> {
+// Locate the slsv-minted cert for an exact domain + its DNS validation record name (captured
+// BEFORE deletion — DescribeCertificate is gone after DeleteCertificate). Exact DomainName match
+// only, so a BYO wildcard is never picked up. Shared with frontend.ts.
+export async function findMintedCert(
+  acm: ACMClient,
+  domain: string,
+): Promise<{ arn: string; validationName?: string } | undefined> {
+  const list = await acm.send(new ListCertificatesCommand({ MaxItems: 100 }));
+  const arn = list.CertificateSummaryList?.find((c) => c.DomainName === domain)?.CertificateArn;
+  if (!arn) return undefined;
+  const rr = (await acm.send(new DescribeCertificateCommand({ CertificateArn: arn })))
+    .Certificate?.DomainValidationOptions?.[0]?.ResourceRecord;
+  return { arn, validationName: rr?.Name ? stripDot(rr.Name) : undefined };
+}
+
+// Retry until API Gateway / CloudFront releases the cert (they free it only eventually after
+// the domain/distribution deletes). Shared with frontend.ts.
+export async function deleteCertWhenFree(acm: ACMClient, arn: string): Promise<void> {
   for (let i = 0; i < 18; i++) {
     try {
       await acm.send(new DeleteCertificateCommand({ CertificateArn: arn }));

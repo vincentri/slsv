@@ -14,12 +14,16 @@ const BASIC_EXEC_ARN = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecu
 
 const errName = (e: unknown) => (e as { name?: string }).name;
 
+// One role serves both compute types. `ecs-tasks` is what a Fargate task assumes — as BOTH its
+// execution role (pull the image, write logs) and its task role (the worker's own AWS calls).
+// Without it here, RunTask fails outright on real AWS; Floci ignores roles entirely, so a worker
+// that runs locally would be the first thing to break on deploy.
 const TRUST_POLICY = JSON.stringify({
   Version: "2012-10-17",
   Statement: [
     {
       Effect: "Allow",
-      Principal: { Service: "lambda.amazonaws.com" },
+      Principal: { Service: ["lambda.amazonaws.com", "ecs-tasks.amazonaws.com"] },
       Action: "sts:AssumeRole",
     },
   ],
@@ -77,6 +81,40 @@ function dataPolicy(appName: string): string {
         Effect: "Allow",
         Action: ["xray:PutTraceSegments", "xray:PutTelemetryRecords"],
         Resource: "*",
+      },
+      {
+        // Workers: what a function needs to start/inspect/stop its own app+stage's container jobs.
+        Effect: "Allow",
+        Action: ["ecs:RunTask", "ecs:DescribeTasks", "ecs:StopTask"],
+        Resource: [
+          `arn:aws:ecs:*:*:task-definition/${appName}-*`,
+          `arn:aws:ecs:*:*:task/${appName}/*`,
+        ],
+      },
+      {
+        // RunTask hands the task definition's execution/task role to ECS, and IAM treats that as
+        // passing a role — without this, RunTask is denied even with ecs:RunTask allowed. Scoped
+        // to this app+stage's own role, and only when ECS is the one receiving it.
+        Effect: "Allow",
+        Action: "iam:PassRole",
+        Resource: `arn:aws:iam::*:role/${appName}-exec`,
+        Condition: { StringEquals: { "iam:PassedToService": "ecs-tasks.amazonaws.com" } },
+      },
+      {
+        // The same role is the task EXECUTION role, so it needs to pull the worker image.
+        // GetAuthorizationToken is account-wide by design (it takes no resource).
+        Effect: "Allow",
+        Action: "ecr:GetAuthorizationToken",
+        Resource: "*",
+      },
+      {
+        Effect: "Allow",
+        Action: [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+        ],
+        Resource: `arn:aws:ecr:*:*:repository/${appName.toLowerCase()}-*`,
       },
     ],
   });

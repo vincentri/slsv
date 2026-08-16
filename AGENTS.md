@@ -386,17 +386,43 @@ policy forwards everything **except Host** so API GW sees its own `execute-api` 
 policy IDs are global constants. `CustomErrorResponses` (403/404 → `/index.html`, 200) handle SPA
 routing. ponytail: CloudFront is create-only (idempotent by `Comment`) — it does NOT update an
 existing distribution, so a config fix like this needs `slsv destroy --target aws` + redeploy (or
-a manual console edit) to take effect on already-deployed distributions.
+a manual console edit) to take effect on already-deployed distributions. **Exception: the custom
+domain (`Aliases`/`ViewerCertificate`) IS converged** on redeploy (add/change/drop
+`frontend.domain` works in place via `UpdateDistribution`) — adding a domain to an
+already-deployed distribution is the common path, so it can't wait for destroy+redeploy.
 Because `/api/*` becomes same-origin under the CloudFront domain, `deployFrontendAws` skips the
 `VITE_SLSV_API_URL` injection in this mode (relative `/api` just works — no CORS needed either).
 Idempotent via `ListDistributions` + find-by-`Comment` (`slsv:<appName>`), no id tracked.
-Returns `https://<domain>.cloudfront.net`. ponytail: default CloudFront domain only (custom
-domain needs an ACM cert in us-east-1 + `Aliases` + DNS — separate feature); public S3 bucket
+Returns `https://<domain>.cloudfront.net`. ponytail: public S3 bucket
 kept (not OAC-private) since it's the existing setup. Deploy and destroy each take ~15-20 min
 (CloudFront config propagation) — `destroy` disables the distribution, waits for it to reach
 `Deployed`, then deletes it (`providers/aws/frontend.ts`: `ensureDistribution`/
 `destroyDistribution`). CloudFront's client always targets `us-east-1` (global service),
 regardless of the app's deploy region (`clients.ts`).
+
+### Frontend custom domain (`frontend.domain`, aws-only)
+
+Point a real domain (`app.myapp.com`) at the frontend, mirroring `api.domain`'s zero-manual-DNS
+flow with the same Cloudflare machinery (`CLOUDFLARE_API_TOKEN`, `cfZoneIdForDomain` auto-finds
+the zone). **Implies `cloudfront: true`** (a bare S3 website endpoint can't serve HTTPS for a
+custom domain). Flow (`deployFrontendAws`): `ensureCert` — **shared with `domain.ts`, now
+exported** — mints a DNS-validated ACM cert in **us-east-1** (CloudFront requirement, the
+OPPOSITE of the API's regional cert; `clients.ts` has a dedicated `acmUsEast1`), writes the
+validation CNAME via Cloudflare, polls to `ISSUED` → distribution gets `Aliases: [domain]` +
+`ViewerCertificate` (sni-only, TLSv1.2_2021) → public CNAME `domain` → `<dist>.cloudfront.net`
+(DNS-only/unproxied) → deploy returns `https://<domain>`. `frontend.certArn` skips ACM (BYO
+pre-validated us-east-1 cert, e.g. a wildcard). Aliases/cert are **converged** on an existing
+distribution (`UpdateDistribution`), unlike the rest of its config — add/change/drop
+`frontend.domain` takes effect on redeploy. Teardown is **discovery-based**:
+`destroyDistribution` reads the domain from the distribution's `Aliases` (no yml needed), then
+deletes the slsv-minted cert (`findMintedCert` + `deleteCertWhenFree`, retrying while CloudFront
+releases it) + BOTH Cloudflare records (public + validation CNAME); a BYO `certArn` and its
+validation record are left. Skipped on `--target local`. ponytail ceilings: (1) Cloudflare only,
+same as `api.domain`; (2) one domain per frontend (no `www` + apex pair — CNAME both yourself
+with `certArn` covering both, or ask); (3) dropping `frontend.domain` on a redeploy clears the
+alias but leaves the cert + Cloudflare records (cleaned by `slsv destroy`); (4) a BYO
+exact-match cert on a dropped-frontend reconcile prune would be deleted (yml gone, can't know
+it's BYO) — same accepted ceiling as `sweepApiDomains`.
 
 ### API custom domain (`api.domain`, aws-only)
 
@@ -560,6 +586,100 @@ trigger (or whole function) was removed from the yml is pruned (targets cleared 
 AWS refuses DeleteRule while targets exist). Sending events (to test) is app side:
 PutEvents via SDK/CLI onto the default bus.
 
+### Workers (container jobs, ECS Fargate)
+
+`workers:` runs work a Lambda can't: longer than 15 min, heavier than the 10GB image limit, or
+needing a real OS toolchain (ffmpeg, torch). **One Fargate task per call** — a handler calls
+`worker('clipper').run(payload)` (`sdk/providers/aws/worker.ts` → `RunTask`), the container does
+the job and exits. There is no pool, no dispatcher, no idle timeout: scale-to-zero is just the
+task ending, so nothing bills at rest.
+
+**No trigger block.** A worker is invoked from code, like the trigger-less function `api.auth`
+uses. Deliberately **no queue in front**: that would need a cron dispatcher Lambda (ECS has no SQS
+event-source mapping, and an ESM Lambda would *consume* the message), plus running-task counting
+and an idle-exit loop in the worker. Dropped for one-task-per-job. What that costs, add back only
+when hit: no automatic retry (a dead task is a stuck `running` row — track job state yourself), no
+DLQ, and no backpressure (`run()` fans out 1:1 with requests up to the Fargate vCPU quota).
+
+Payload rides in as **`$SLSV_PAYLOAD`** (JSON) via `RunTask` container overrides — ECS caps
+overrides near 8KB, so pass an id and let the worker fetch the rest. It gets the same
+`BUCKET_*`/`DATABASE_*`/`QUEUE_*`/`SECRET_*` bindings a function does (plus `SLSV_STAGE`), with the
+same `localhost:4566 → host.docker.internal:4566` rewrite, so a **Python** worker just reads env
+with boto3 — no SDK port needed. `SLSV_MAX_RUNTIME` is injected because **Fargate has no task
+timeout**: nothing reaps a wedged container, so the worker must enforce its own deadline.
+
+Deploy per worker: ECR repo get-or-create → `docker build` → push → `RegisterTaskDefinition`
+(cluster `<app>-<stage>`, family `<app>-<stage>-<worker>`, container always named `app`). The
+registry host comes from ECR `GetAuthorizationToken`'s **`proxyEndpoint`**, NOT `repositoryUri` —
+Floci's URI (`000000000000.dkr.ecr.us-east-1.localhost:5100/…`) has an unresolvable host, while
+proxyEndpoint is right on both targets. Image tagged by build digest, so an unchanged build pushes
+only layer-existence checks (`ListImages` can't be used to skip it — Floci's ECR API returns `[]`
+even for images its registry is serving). `--platform` is always explicit: a Mac builds arm64
+natively, Fargate defaults to x86_64, and the mismatch only fails on AWS (`exec format error`).
+Each deploy pushes a NEW digest-tagged image and nothing overwrites the old one, so repo create
+also sets a **lifecycle policy keeping the last 5** — without it ECR grows (and bills) forever,
+which bites hardest with multi-GB ML images. Create-only, and skipped on Floci (no lifecycle API).
+User `environment:` is merged UNDER the slsv bindings (same precedence as `functions.ts`) so a
+custom key can never clobber `BUCKET_*`/`AWS_ENDPOINT_URL`.
+
+**Local credentials.** On AWS a task gets credentials from its task role via the ECS metadata
+endpoint. Floci injects credentials into Lambda containers but **NOT into ECS task containers**, so
+every SDK call inside a worker failed to sign — the job silently stayed `running` with no output.
+`--target local` therefore injects the same dummy pair the CLI's own clients use
+(`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY=test`, `AWS_REGION`/`AWS_DEFAULT_REGION=us-east-1`)
+alongside `AWS_ENDPOINT_URL`. Never injected on `--target aws` — the role supplies them there.
+
+**Floci emulates ECS + ECR for real** — `RunTask` spawns an actual container on `floci_default`
+(same network as the RDS/valkey containers), env overrides merge, lifecycle reaches `STOPPED` with
+`stoppedReason`/`exitCode`, and the container is reaped on clean exit. No sidecar, no rule bend.
+Two gaps: **`cpu`/`memory` aren't enforced** (`NanoCpus=0`), and the **`awslogs` driver is a no-op**
+(the group is never created) — so local output is only in `docker logs floci-ecs-*`, real
+CloudWatch on AWS.
+
+Teardown treats task definitions and ECR repos as **build artifacts, not data stores** (rebuilt
+and re-pushed every deploy, holding nothing the user wrote) — so a worker dropped from the yml is
+**auto-pruned** like a Lambda, not report-only like a bucket. Prune and destroy both `StopTask`
+first (Floci reaps the container when the task stops; on AWS a deregistered task definition does
+NOT stop running tasks), then deregister every revision, delete the repo, and — destroy only —
+delete the cluster last. `listWorkerFamilies` derives liveness from **ACTIVE task definitions, not
+`ListTaskDefinitionFamilies`**: Floci keeps reporting a family ACTIVE after all its revisions are
+deregistered (real AWS flips it INACTIVE), which made prune re-fire every deploy, print
+`pruned worker` for something already gone, and leave `slsv plan` showing a phantom delete forever.
+
+`slsv plan` reports workers **presence-only** (`create`/`delete`) — a deploy re-registers the task
+definition unconditionally, so an `update` would fire every run and mean nothing.
+
+**Networking (aws-only).** Fargate `RunTask` **requires** `networkConfiguration` (subnets +
+security groups) while Floci ignores networking entirely — the biggest local-passes/aws-fails trap
+in the feature. slsv resolves it itself (`resolveDefaultVpc`): the account's **default VPC** public
+subnets (`DescribeSubnets` filter `default-for-az=true`) plus one **egress-only** security group
+`<app>-<stage>-worker` it creates there (a new SG is already no-ingress/allow-all-egress, so there
+are no rule calls). Public subnets + `assignPublicIp` is deliberate — the task must reach
+ECR/S3/DynamoDB, and private subnets would need a NAT gateway (~$32/mo standing) or VPC endpoints;
+nothing inbound is opened, so the public IP is outbound-only. Discovery runs **once per deploy**,
+lazily, and never on `--target local`. `workers.<n>.vpc` overrides it entirely (deleted default
+VPC, or private subnets you bring a NAT for); no default VPC and no override → `ConfigError`
+naming the fix. The security group is torn down with the cluster on `slsv destroy --target aws`.
+ponytail: default VPC only — slsv creates no VPC/subnets/IGW of its own.
+
+**IAM.** The one `<app>-<stage>-exec` role now trusts **`ecs-tasks.amazonaws.com`** as well as
+Lambda, and serves a task as BOTH execution role (ECR pull + logs) and task role (the worker's own
+calls). Its inline `slsv-data` policy gained `ecs:RunTask`/`DescribeTasks`/`StopTask` scoped to
+`<app>-<stage>-*`, `iam:PassRole` on itself conditioned to `iam:PassedToService=ecs-tasks`
+(RunTask is denied without it, even with `ecs:RunTask` allowed), and the ECR pull actions
+(`GetAuthorizationToken` account-wide — it takes no resource — plus layer/image reads scoped to
+the app's repos).
+
+**GPU** needs the EC2 launch type, which Floci **cannot** emulate (no EC2 API —
+`DescribeInstances` falls through to S3), so it stays unverifiable locally. The ECS task
+definition is launch-type agnostic, so this work carries over when it lands.
+
+**Never exercised locally** (Floci models none of it): `networkConfiguration`, the security group,
+`assignPublicIp`, `executionRoleArn`, the Fargate cpu/memory grid, the 20GB ephemeral-storage
+default, arch mismatch, and the default **6 on-demand vCPU per region** quota on new accounts. So
+the first `--target aws` worker deploy should be a trivial `alpine echo` image — it proves
+networking, IAM, and the ECR pull in ~60s instead of a 30-minute image push.
+
 ## slsv.yml schema (key blocks)
 
 ```yaml
@@ -588,6 +708,7 @@ buckets: {
   }
 databases: { name: { type: dynamodb|postgres|mysql, ... } } # dynamodb: partitionKey, sortKey?, gsi? — postgres/mysql: instanceClass?, storage?, multiAz?, name?, init_sql?, skipFinalSnapshot? (default true — destroy takes no snapshot). All provisioned via their APIs. Hosted/BYO DB → put its URL in secrets:, not here
 caches: { name: { type: redis|valkey, nodeType?, nodes?, serverless? } } # both types provision valkey under the hood; knobs apply on --target aws. serverless: true → ElastiCache Serverless on aws (rediss://, auto-scale); ignored locally (node group — Floci lacks the serverless API)
+workers: { name: { image: ./dir, cpu?, memory?, ephemeralStorage?, architecture?, maxRuntime?, environment?, vpc? } } # container job on ECS Fargate, one task per `worker('name').run(payload)` — no trigger block, invoked from handler code. image = folder with a Dockerfile (built + pushed to ECR on deploy). cpu: 256|512|1024|2048|4096|8192|16384 (1024 = 1 vCPU, default 1024); memory: MB, only the Fargate grid per cpu (default = that row's min) — Floci accepts any pair so a bad one fails on --target aws only. ephemeralStorage: 21-200 GB (default 20, thin for video). architecture: arm64 (default) | x86_64 — slsv passes --platform so a Mac can't ship the wrong one. maxRuntime: secs (default 3600) injected as $SLSV_MAX_RUNTIME — Fargate has NO task timeout, the worker must enforce it. vpc: { subnets, securityGroups?, assignPublicIp? } optional override — on --target aws slsv otherwise uses the default VPC's public subnets + an egress-only `<app>-<stage>-worker` security group it creates; ignored on --target local. Payload arrives as $SLSV_PAYLOAD (JSON, keep under ~8KB). See "Workers" above
 secrets: [ENV_VAR_NAME]
 tags: { KEY: value } # optional; custom tags added to every resource (on top of slsv:* tags)
 logRetentionDays: 14 # optional; CloudWatch log retention (default 14, 0 = never). Must be a CloudWatch-allowed value; applied every deploy

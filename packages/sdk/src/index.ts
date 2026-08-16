@@ -5,6 +5,7 @@ import { makeStorage } from "./providers/aws/storage.js";
 import { makeCache } from "./providers/aws/cache.js";
 import { getSecret } from "./providers/aws/secret.js";
 import { makeSql } from "./providers/aws/sql.js";
+import { makeWorker } from "./providers/aws/worker.js";
 
 export {
   json,
@@ -24,6 +25,8 @@ export {
   type Route,
   type RouteOptions,
 } from "./api.js";
+
+export type { WorkerClient } from "./providers/aws/worker.js";
 
 export type {
   DbClient,
@@ -54,6 +57,15 @@ export function storage(name: string) {
 /** Redis cache by logical name from slsv.yml */
 export function cache(name: string) {
   return makeCache(resolve("REDIS", name));
+}
+
+/**
+ * Container job by logical name from slsv.yml `workers:`. `worker('clip').run({ id })` starts
+ * one Fargate task and returns its jobId immediately — for work too long or too heavy for a
+ * Lambda (video encoding, ML inference). Nothing runs, or bills, between calls.
+ */
+export function worker(name: string) {
+  return makeWorker(resolve("WORKER", name));
 }
 
 /**

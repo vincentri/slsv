@@ -19,6 +19,9 @@ import {
   waitUntilDistributionDeployed,
   type DistributionSummary,
 } from "@aws-sdk/client-cloudfront";
+import type { ACMClient } from "@aws-sdk/client-acm";
+import { ensureCert, findMintedCert, deleteCertWhenFree } from "./domain.js";
+import { cfZoneIdForDomain, cfUpsertCname, cfDeleteByName } from "./cloudflare.js";
 import { createServer } from "node:http";
 import { execSync } from "child_process";
 import { createReadStream, readdirSync, readFileSync, statSync } from "node:fs";
@@ -116,6 +119,7 @@ export async function deployFrontendLocal(
 export async function deployFrontendAws(
   s3: S3Client,
   cf: CloudFrontClient,
+  acm: ACMClient, // MUST be us-east-1 — CloudFront viewer certs live there only
   frontend: FrontendDef,
   appName: string,
   cwd: string,
@@ -125,9 +129,11 @@ export async function deployFrontendAws(
 ): Promise<string> {
   const bucket = `${appName}-frontend`;
   const src = resolve(cwd, frontend.src);
+  // A custom domain implies CloudFront — the bare S3 website endpoint can't serve HTTPS for it.
+  const useCloudfront = Boolean(frontend.cloudfront || frontend.domain);
   // With CloudFront, /api/* is same-origin, so leave the relative default (no injected var)
   // instead of pointing the build at the API Gateway domain directly.
-  runBuild(frontend, cwd, frontend.cloudfront ? undefined : apiUrl);
+  runBuild(frontend, cwd, useCloudfront ? undefined : apiUrl);
 
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }));
@@ -196,9 +202,26 @@ export async function deployFrontendAws(
   );
 
   const s3WebsiteDomain = `${bucket}.s3-website-${region}.amazonaws.com`;
-  if (frontend.cloudfront) {
+  if (useCloudfront) {
     const apiDomain = apiUrl ? new URL(apiUrl).hostname : undefined;
-    return ensureDistribution(cf, appName, s3WebsiteDomain, apiDomain, tags);
+    // Custom domain: mirror api.domain — DNS-validated ACM cert (us-east-1) written + polled via
+    // Cloudflare, distribution gets Aliases + ViewerCertificate, public CNAME → the distribution.
+    let custom: { domain: string; certArn: string } | undefined;
+    let zoneId: string | undefined;
+    if (frontend.domain) {
+      console.log(`  custom domain ${frontend.domain}`);
+      zoneId = await cfZoneIdForDomain(frontend.domain);
+      const certArn = frontend.certArn ?? (await ensureCert(acm, frontend.domain, zoneId));
+      custom = { domain: frontend.domain, certArn };
+    }
+    const distUrl = await ensureDistribution(cf, appName, s3WebsiteDomain, apiDomain, tags, custom);
+    if (custom && zoneId) {
+      // DNS-only (unproxied), same as the API CNAME. The domain serves once the distribution
+      // finishes deploying (~15-20 min on first create).
+      await cfUpsertCname(zoneId, custom.domain, new URL(distUrl).hostname, false);
+      return `https://${custom.domain}`;
+    }
+    return distUrl;
   }
   return `http://${s3WebsiteDomain}`;
 }
@@ -212,8 +235,19 @@ async function ensureDistribution(
   s3WebsiteDomain: string,
   apiDomain: string | undefined,
   tags: Record<string, string>,
+  custom?: { domain: string; certArn: string },
 ): Promise<string> {
   const comment = `slsv:${appName}`;
+  const aliases = custom
+    ? { Quantity: 1, Items: [custom.domain] }
+    : { Quantity: 0, Items: [] as string[] };
+  const viewerCert = custom
+    ? {
+        ACMCertificateArn: custom.certArn,
+        SSLSupportMethod: "sni-only" as const,
+        MinimumProtocolVersion: "TLSv1.2_2021" as const,
+      }
+    : { CloudFrontDefaultCertificate: true };
   const existing = await paginate<DistributionSummary>((Marker) =>
     cf.send(new ListDistributionsCommand({ Marker })).then((r) => ({
       items: r.DistributionList?.Items ?? [],
@@ -221,7 +255,30 @@ async function ensureDistribution(
     })),
   );
   const found = existing.find((d) => d.Comment === comment);
-  if (found) return `https://${found.DomainName}`;
+  if (found) {
+    // Unlike the rest of the distribution config (create-only), the custom domain IS converged —
+    // adding frontend.domain to an already-deployed distribution is the common path (deploy
+    // first, add the domain later), so drift here can't wait for destroy+redeploy.
+    const current = found.Aliases?.Items ?? [];
+    if (current.join(",") !== aliases.Items.join(",")) {
+      console.log(`  updating distribution aliases → [${aliases.Items.join(", ")}]`);
+      const { DistributionConfig, ETag } = await cf.send(
+        new GetDistributionConfigCommand({ Id: found.Id }),
+      );
+      await cf.send(
+        new UpdateDistributionCommand({
+          Id: found.Id,
+          IfMatch: ETag,
+          DistributionConfig: {
+            ...DistributionConfig!,
+            Aliases: aliases,
+            ViewerCertificate: viewerCert,
+          },
+        }),
+      );
+    }
+    return `https://${found.DomainName}`;
+  }
 
   const s3OriginId = "slsv-s3-frontend";
   const apiOriginId = "slsv-api-gateway";
@@ -259,6 +316,8 @@ async function ensureDistribution(
         CallerReference: `${appName}-${Date.now()}`,
         Comment: comment,
         Enabled: true,
+        Aliases: aliases,
+        ViewerCertificate: viewerCert,
         DefaultRootObject: "index.html",
         Origins: { Quantity: origins.length, Items: origins },
         DefaultCacheBehavior: {
@@ -329,9 +388,16 @@ async function ensureDistribution(
 }
 
 // ponytail: disable→wait→delete is ~15-20 min total; logs progress so destroy doesn't look hung.
+// Custom-domain cleanup is discovery-based (read from the distribution's Aliases, not the yml),
+// so a domain already dropped from the yml is still cleaned: slsv-minted us-east-1 cert +
+// both Cloudflare records (public CNAME + ACM validation CNAME). A BYO cert (byoCertArn, from
+// the yml when still present) is left, along with its validation record — same stance as
+// destroyApiDomain. Cert delete retries until CloudFront releases it (deleteCertWhenFree).
 export async function destroyDistribution(
   cf: CloudFrontClient,
+  acm: ACMClient, // us-east-1
   appName: string,
+  byoCertArn?: string,
 ): Promise<"deleted" | "none"> {
   const comment = `slsv:${appName}`;
   const items = await paginate<DistributionSummary>((Marker) =>
@@ -363,5 +429,17 @@ export async function destroyDistribution(
 
   console.log("  deleting CloudFront distribution...");
   await cf.send(new DeleteDistributionCommand({ Id: found.Id, IfMatch: deleteETag }));
+
+  // Custom domain cleanup — the alias tells us the domain, no yml needed. Capture the minted
+  // cert + validation record name BEFORE deleting the cert (Describe is gone afterward).
+  const aliasDomain = DistributionConfig!.Aliases?.Items?.[0];
+  if (aliasDomain) {
+    console.log(`  cleaning up custom domain ${aliasDomain}`);
+    const minted = byoCertArn ? undefined : await findMintedCert(acm, aliasDomain);
+    const zoneId = await cfZoneIdForDomain(aliasDomain);
+    await cfDeleteByName(zoneId, aliasDomain);
+    if (minted?.validationName) await cfDeleteByName(zoneId, minted.validationName);
+    if (minted) await deleteCertWhenFree(acm, minted.arn);
+  }
   return "deleted";
 }

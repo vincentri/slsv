@@ -13,6 +13,7 @@ const EMPTY: LiveState = {
   queues: [],
   secrets: [],
   caches: [],
+  workers: [],
 };
 
 const cfg = (over: Partial<AppConfig>): AppConfig => ({ app: "shop", ...over }) as AppConfig;
@@ -128,5 +129,32 @@ describe("classify", () => {
   it("orphans a queue slsv never created (genuinely stray)", () => {
     const r = classify(cfg({}), "dev", { ...EMPTY, queues: ["shop-dev-stranger"] });
     expect(find(r, "queue", "stranger")?.action).toBe("orphan");
+  });
+});
+
+describe("workers", () => {
+  const cfg = { app: "shop", workers: { clip: { image: "./worker" } } } as unknown as AppConfig;
+
+  it("plans a create when the task-definition family is absent", () => {
+    const { changes } = classify(cfg, "dev", EMPTY);
+    expect(changes).toContainEqual({ action: "create", kind: "worker", name: "clip" });
+  });
+
+  it("deletes a worker dropped from the yml — build artifact, pruned like a function", () => {
+    const { changes } = classify({ app: "shop" } as AppConfig, "dev", {
+      ...EMPTY,
+      workers: ["shop-dev-clip"],
+    });
+    expect(changes).toContainEqual({
+      action: "delete",
+      kind: "worker",
+      name: "clip",
+      destructive: false,
+    });
+  });
+
+  it("reports nothing when the family already matches", () => {
+    const { changes } = classify(cfg, "dev", { ...EMPTY, workers: ["shop-dev-clip"] });
+    expect(changes.filter((c) => c.kind === "worker")).toEqual([]);
   });
 });

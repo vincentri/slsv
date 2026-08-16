@@ -86,6 +86,14 @@ const FrontendConfig = z.object({
   // Serve the frontend + /api/* through one HTTPS CloudFront domain instead of the
   // HTTP-only S3 website endpoint. aws-only; ~15-20 min to deploy/destroy. Default false.
   cloudfront: z.boolean().optional(),
+  // Custom domain for the frontend (aws-only), provisioned end-to-end like api.domain:
+  // ACM cert (us-east-1 — CloudFront requirement, unlike the API's regional cert) + CloudFront
+  // Aliases/ViewerCertificate + public Cloudflare CNAME → the distribution. Needs
+  // CLOUDFLARE_API_TOKEN in env. Implies cloudfront (a bare S3 website endpoint can't serve a
+  // custom HTTPS domain). Ignored on --target local.
+  domain: z.string().optional(),
+  // Reuse a pre-validated us-east-1 ACM cert (e.g. a wildcard) instead of minting one.
+  certArn: z.string().optional(),
 });
 
 const BucketConfig = z
@@ -100,6 +108,68 @@ const BucketConfig = z
     cors: z.array(z.string()).optional(),
   })
   .strict();
+
+// Fargate only accepts a fixed cpu→memory grid; anything off it fails at RunTask with an
+// opaque InvalidParameterException. Floci accepts ANY pair, so without this check a worker
+// runs fine locally and dies on the first real deploy. [min, max, step] MB per cpu unit.
+const FARGATE_MEM: Record<number, [number, number, number]> = {
+  256: [512, 2048, 512],
+  512: [1024, 4096, 1024],
+  1024: [2048, 8192, 1024],
+  2048: [4096, 16384, 1024],
+  4096: [8192, 30720, 1024],
+  8192: [16384, 61440, 4096],
+  16384: [32768, 122880, 8192],
+};
+
+// A container job: one Fargate task per `worker('name').run(payload)` call. No trigger block —
+// it's invoked from handler code, like the trigger-less function `api.auth` uses. The task runs,
+// exits, and bills nothing at rest, so there's no pool to scale or idle timeout to tune.
+const WorkerConfig = z
+  .object({
+    image: z.string(), // folder containing a Dockerfile, relative to slsv.yml
+    cpu: z
+      .union(
+        Object.keys(FARGATE_MEM).map((n) => z.literal(Number(n))) as [
+          z.ZodLiteral<number>,
+          z.ZodLiteral<number>,
+          ...z.ZodLiteral<number>[],
+        ],
+      )
+      .optional(), // Fargate CPU units (1024 = 1 vCPU), default 1024
+    memory: z.number().int().optional(), // MB — must match the cpu row above, default the row minimum
+    ephemeralStorage: z.number().int().min(21).max(200).optional(), // GB, default 20 (only settable ABOVE 20)
+    architecture: z.enum(["x86_64", "arm64"]).optional(), // default arm64 (matches functions)
+    // Nothing reaps a wedged task — Fargate has no task timeout — so the worker self-enforces
+    // this deadline (slsv injects it as SLSV_MAX_RUNTIME). Seconds, default 3600.
+    maxRuntime: z.number().int().min(1).optional(),
+    environment: z.record(z.string(), z.string()).optional(), // slsv bindings still win
+    // aws-only: Fargate REQUIRES subnets + security groups (Floci ignores networking entirely,
+    // which is why a worker can run locally with none of this set). ponytail: no discovery yet —
+    // deploy throws on --target aws if this is missing. Default-VPC discovery is the next step.
+    vpc: z
+      .object({
+        subnets: z.array(z.string()).min(1),
+        securityGroups: z.array(z.string()).optional(),
+        assignPublicIp: z.boolean().optional(), // default true — public subnet + public IP keeps ECR pulls NAT-free
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((w, ctx) => {
+    const [min, max, step] = FARGATE_MEM[w.cpu ?? 1024]!;
+    if (w.memory === undefined) return;
+    if (w.memory < min || w.memory > max || (w.memory - min) % step !== 0)
+      ctx.addIssue({
+        code: "custom",
+        path: ["memory"],
+        message: `cpu ${w.cpu ?? 1024} allows memory ${min}-${max} MB in ${step} MB steps (Fargate grid)`,
+      });
+  });
+
+// Default memory for a cpu value = the smallest the Fargate grid allows.
+export const fargateDefaultMemory = (cpu: number) => FARGATE_MEM[cpu]![0];
 
 const ApiConfig = z.object({
   // CORS for the HTTP API. Two shapes:
@@ -175,6 +245,7 @@ const AppConfig = z
   buckets: z.record(z.string(), BucketConfig).optional(),
   databases: z.record(z.string(), DatabaseConfig).optional(),
   caches: z.record(z.string(), CacheConfig).optional(),
+  workers: z.record(z.string(), WorkerConfig).optional(),
   secrets: z.array(z.string()).optional(),
   frontend: FrontendConfig.optional(),
   tags: z.record(z.string(), z.string()).optional(), // custom tags merged onto every resource
@@ -202,6 +273,7 @@ const AppConfig = z
 
 export type AppConfig = z.infer<typeof AppConfig>;
 export type DynamoDbDef = z.infer<typeof DynamoDbConfig>;
+export type WorkerDef = z.infer<typeof WorkerConfig>;
 export type FrontendDef = z.infer<typeof FrontendConfig>;
 
 // ponytail: re-exported for the docs generator (scripts/docs/schema.ts). The runtime schema is

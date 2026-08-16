@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import os from "os";
-import { loadConfig, ConfigError } from "./config.js";
+import { loadConfig, ConfigError, fargateDefaultMemory } from "./config.js";
 
 // Exercises the `stages:` overlay: deep-merge, scalar override, and null-removal trigger swap.
 describe("loadConfig stage overlay", () => {
@@ -268,5 +268,37 @@ functions:
     expect(msg).toMatch(/Invalid slsv\.yml/);
     expect(msg).toMatch(/functions\.api\.timeout/); // path-prefixed
     expect(msg).not.toMatch(/ZodError|\bat /); // no stack / zod class dump
+  });
+});
+
+describe("workers", () => {
+  const tmp = path.join(os.tmpdir(), "slsv-workers-test");
+  mkdirSync(tmp, { recursive: true });
+  const write = (yml: string) => writeFileSync(path.join(tmp, "slsv.yml"), yml);
+
+  it("accepts a cpu/memory pair on the Fargate grid and defaults memory to the row minimum", () => {
+    write(`
+app: shop
+workers:
+  clip:
+    image: ./worker
+    cpu: 4096
+    memory: 16384
+`);
+    const cfg = loadConfig(tmp, "dev");
+    expect(cfg.workers!.clip!.memory).toBe(16384);
+    expect(fargateDefaultMemory(4096)).toBe(8192);
+  });
+
+  it("rejects a memory value off the grid — Floci would accept it and AWS would not", () => {
+    write(`
+app: shop
+workers:
+  clip:
+    image: ./worker
+    cpu: 256
+    memory: 4096
+`);
+    expect(() => loadConfig(tmp, "dev")).toThrow(/workers\.clip\.memory/);
   });
 });

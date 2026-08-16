@@ -20,6 +20,7 @@ const ACCESSOR_LABEL: Record<string, string> = {
   cache: "cache",
   storage: "bucket",
   secret: "secret",
+  worker: "worker",
 };
 
 // Directories/files never worth scanning for SDK calls.
@@ -47,6 +48,7 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
     cache: new Set(Object.keys(cfg.caches ?? {})),
     storage: new Set(Object.keys(cfg.buckets ?? {})),
     secret: new Set(cfg.secrets ?? []),
+    worker: new Set(Object.keys(cfg.workers ?? {})),
   };
   const referenced = Object.fromEntries(
     Object.keys(ACCESSOR_LABEL).map((k) => [k, new Set<string>()]),

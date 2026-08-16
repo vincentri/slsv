@@ -174,6 +174,38 @@ caches:
   #   nodeType: cache.r6g.large
   #   nodes: 3
 
+workers:
+  # Container jobs, for work a Lambda can't do: longer than 15 min, heavier than 10 GB, or
+  # needing a real OS toolchain (ffmpeg, torch, ImageMagick). One Fargate task runs per call —
+  # there's no pool, no idle timeout, and nothing billing between jobs.
+  #
+  # No trigger block: you start it from handler code.
+  #   import { worker } from '@slsv/sdk'
+  #   const { jobId } = await worker('clipper').run({ videoId })   # returns at once
+  # The payload arrives in the container as $SLSV_PAYLOAD (JSON). ECS caps overrides near 8 KB,
+  # so pass an id and let the worker fetch the rest — it gets the same BUCKET_*/DATABASE_*/
+  # QUEUE_*/SECRET_* bindings a function does.
+  #
+  # Nothing retries a failed task and nothing reports it finishing: track state yourself (a
+  # `jobs` row set to done by the worker) and poll it. Add a queue in front if you need retry.
+  clipper:
+    image: ./worker # folder with a Dockerfile (built + pushed to ECR on deploy)
+    # cpu: 1024                     # Fargate CPU units, 1024 = 1 vCPU. 256|512|1024|2048|4096|8192|16384
+    # memory: 2048                  # MB — Fargate allows only a fixed grid per cpu (1024 → 2048-8192
+    #                               # in 1024 steps). Default = that row's minimum. Floci accepts any
+    #                               # pair, so an invalid one only fails on --target aws.
+    # ephemeralStorage: 100         # GB of /tmp-style disk, 21-200. Default 20 — thin for video.
+    # architecture: arm64           # arm64 (default) | x86_64. Must match what your Dockerfile can
+    #                               # build; slsv passes --platform so a Mac can't ship the wrong one.
+    # maxRuntime: 3600              # secs. Fargate has NO task timeout, so slsv injects this as
+    #                               # $SLSV_MAX_RUNTIME and the worker must enforce its own deadline.
+    # environment: { HF_HOME: /models }  # custom env vars (slsv bindings always win)
+    # vpc:                          # Optional. On --target aws slsv uses the account's DEFAULT VPC
+    #   subnets: [subnet-abc]       # (public subnets + an egress-only `<app>-<stage>-worker` security
+    #   securityGroups: [sg-123]    # group it creates). Set this to override — needed if the default
+    #   assignPublicIp: true        # VPC was deleted, or for private subnets (then bring a NAT/VPC
+    #                               # endpoints yourself). Ignored on --target local (Floci has no EC2).
+
 secrets:
   # Names only. Values come from .env.<stage> (falls back to .env) and are stored in AWS
   # Secrets Manager as <app>-<stage>-<NAME>. The VALUE is never put in the function env —
@@ -204,6 +236,13 @@ frontend:
   # are HTTP-only). Skips the VITE_SLSV_API_URL injection
   # so /api calls stay relative (same-origin). Deploy and
   # destroy each take ~15-20 min (CloudFront propagation).
+  # domain: app.myapp.com             # aws-only, default none. Custom frontend domain,
+  # provisioned end-to-end like api.domain: us-east-1 ACM
+  # cert (DNS-validated), CloudFront alias, public
+  # Cloudflare CNAME — needs CLOUDFLARE_API_TOKEN in env.
+  # Implies cloudfront: true. Ignored on --target local.
+  # certArn: arn:aws:acm:us-east-1:…  # default none. BYO pre-validated us-east-1 cert
+  # (e.g. a wildcard) instead of slsv minting one.
 
 # ── Per-stage overrides (optional) ──────────────────────────────────────────
 # `stages.<name>` deep-merges over the base above for `--stage <name>`. Override ONLY

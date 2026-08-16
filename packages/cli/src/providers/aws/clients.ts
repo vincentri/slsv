@@ -11,6 +11,9 @@ import { IAMClient } from "@aws-sdk/client-iam";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
 import { ACMClient } from "@aws-sdk/client-acm";
+import { ECSClient } from "@aws-sdk/client-ecs";
+import { ECRClient } from "@aws-sdk/client-ecr";
+import { EC2Client } from "@aws-sdk/client-ec2";
 
 const LOCAL_CFG = {
   endpoint: "http://localhost:4566",
@@ -37,9 +40,16 @@ export function makeClients(target: "local" | "aws" = "local") {
     secrets: new SecretsManagerClient(cfg),
     iam: new IAMClient(cfg),
     logs: new CloudWatchLogsClient(cfg),
+    ecs: new ECSClient(cfg),
+    ecr: new ECRClient(cfg),
+    // Only used on --target aws (default-VPC discovery for Fargate). Floci has no EC2 API at all.
+    ec2: new EC2Client(cfg),
     // ACM cert for an API Gateway custom domain must be in the API's own region (regional
     // endpoint) — so this tracks `cfg`'s region, unlike CloudFront's forced us-east-1.
     acm: new ACMClient(cfg),
+    // CloudFront viewer certs (frontend.domain) must live in us-east-1 regardless of the app
+    // region — the opposite constraint of the API's regional cert above.
+    acmUsEast1: new ACMClient(target === "local" ? LOCAL_CFG : { region: "us-east-1" }),
     // CloudFront is a global service reachable only via its us-east-1 endpoint.
     cloudfront: new CloudFrontClient(target === "local" ? LOCAL_CFG : { region: "us-east-1" }),
   };

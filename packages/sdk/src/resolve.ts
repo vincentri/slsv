@@ -2,7 +2,7 @@
 // at deploy time. `db('invoices')` reads `process.env.DATABASE_INVOICES`.
 
 export function resolve(
-  prefix: "DATABASE" | "QUEUE" | "BUCKET" | "REDIS" | "SECRET",
+  prefix: "DATABASE" | "QUEUE" | "BUCKET" | "REDIS" | "SECRET" | "WORKER",
   logicalName: string,
 ): string {
   const key = `${prefix}_${logicalName.toUpperCase().replace(/-/g, "_")}`;

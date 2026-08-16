@@ -10,6 +10,17 @@ import { ensureDynamoTables } from "./dynamodb.js";
 import { ensureBuckets } from "./s3.js";
 import { ensureQueues, type QueueOutput } from "./sqs.js";
 import { ensureSecrets } from "./secrets.js";
+import {
+  ensureWorkers,
+  clusterName,
+  listWorkerFamilies,
+  listWorkerRepos,
+  destroyWorkerFamily,
+  deleteWorkerRepo,
+  deleteWorkerCluster,
+  deleteWorkerSecurityGroup,
+  clusterExists,
+} from "./workers.js";
 import { deployFunctions } from "./functions.js";
 import { ensureApiGateway, deleteHttpApi } from "./apigw.js";
 import { ensureApiDomain, sweepApiDomains } from "./domain.js";
@@ -288,7 +299,12 @@ export class AwsProvider {
     // Idempotent fast no-op when none exists. Disable → wait → delete: a distribution can't be
     // deleted while enabled, and both transitions take ~10-20 min each (aws only).
     if (this.target === "aws") {
-      const result = await destroyDistribution(this.clients.cloudfront, appName);
+      const result = await destroyDistribution(
+        this.clients.cloudfront,
+        this.clients.acmUsEast1,
+        appName,
+        cfg.frontend?.certArn,
+      );
       console.log(`    CloudFront … ${result === "deleted" ? "✓" : "· none to delete"}`);
     }
 
@@ -319,6 +335,32 @@ export class AwsProvider {
           await this.clients.events.send(new RemoveTargetsCommand({ Rule: name, Ids: ids }));
         await this.clients.events.send(new DeleteRuleCommand({ Name: name }));
       });
+    }
+
+    // Workers: stop live tasks + deregister every task-definition revision, delete the ECR repos,
+    // then the cluster last (it can't go while tasks are still attached). Discovery-based like the
+    // rest of destroy — a worker already dropped from the yml is still torn down.
+    const families = await listWorkerFamilies(this.clients.ecs, pfx);
+    for (const family of families)
+      await step(`Worker ${family}`, () =>
+        destroyWorkerFamily(this.clients.ecs, clusterName(appName), family),
+      );
+
+    for (const repo of await listWorkerRepos(this.clients.ecr, lcPfx))
+      await step(`ECR ${repo}`, () =>
+        deleteWorkerRepo(this.clients.ecr, repo).then(() => undefined),
+      );
+
+    if (await clusterExists(this.clients.ecs, clusterName(appName))) {
+      await step(`ECS cluster ${appName}`, () =>
+        deleteWorkerCluster(this.clients.ecs, clusterName(appName)).then(() => undefined),
+      );
+      // The discovered security group is slsv's (created in the account's default VPC), so it goes
+      // too. aws-only: Floci has no EC2 API, and the local path never made one.
+      if (this.target === "aws")
+        await step(`Security group ${appName}-worker`, () =>
+          deleteWorkerSecurityGroup(this.clients.ec2, appName),
+        );
     }
 
     // Floci leaves Lambda execution containers running after DeleteFunction — its container
@@ -464,6 +506,27 @@ export class AwsProvider {
       console.log(`  pruned event rule ${name}`);
     }
 
+    // --- Workers: auto-prune orphans ---
+    // Task definitions and ECR repos are build artifacts (re-registered and re-pushed every
+    // deploy, holding nothing the user wrote), so a worker dropped from the yml prunes like a
+    // Lambda rather than being reported like a data store. Leaving them costs ECR storage for
+    // images nothing can launch, and — locally — a live task keeps running the deleted worker.
+    const wantWorkers = new Set(Object.keys(cfg.workers ?? {}));
+    for (const family of await listWorkerFamilies(this.clients.ecs, prefix)) {
+      if (wantWorkers.has(logical(family))) continue;
+      try {
+        await destroyWorkerFamily(this.clients.ecs, clusterName(`${cfg.app}-${stage}`), family);
+        await deleteWorkerRepo(this.clients.ecr, family.toLowerCase()).catch((e) => {
+          if (!GONE.test(String(e?.name ?? e))) throw e;
+        });
+        console.log(`  pruned worker ${family}`);
+      } catch (e) {
+        // Surfaced, not swallowed: a failure here leaves a live task billing, and a silent
+        // "pruned" log would claim otherwise (the bug this repo already fixed for Lambda).
+        console.warn(`  ⚠ could not prune worker ${family}: ${(e as Error).message}`);
+      }
+    }
+
     // --- Data stores (DynamoDB / S3 buckets / RDS) ---
     // Default `autoRemove: false` (safe) — an orphan (a data store dropped from the yml) is
     // REPORTED and left until `slsv destroy`, so it can't silently take its data with it. Set
@@ -523,7 +586,11 @@ export class AwsProvider {
         .catch((e: any) => console.warn(`  ⚠ could not prune frontend bucket ${frontendBucket}: ${e?.message ?? e}`));
       // ponytail: destroyDistribution disables→waits→deletes (~15-20 min), but only on the one
       // redeploy that drops frontend; idempotent by Comment (fast no-op when none exists).
-      await destroyDistribution(this.clients.cloudfront, `${cfg.app}-${stage}`).catch((e) => {
+      await destroyDistribution(
+        this.clients.cloudfront,
+        this.clients.acmUsEast1,
+        `${cfg.app}-${stage}`,
+      ).catch((e) => {
         if (!GONE.test(e?.name ?? "")) throw e;
       });
     }
@@ -603,6 +670,55 @@ export class AwsProvider {
       envVars[envKey("QUEUE", name)] = q.url;
     }
     return envVars;
+  }
+
+  // Container jobs: build each worker's image → ECR → task definition. Runs AFTER the other
+  // stores so the task definition carries the same bindings (BUCKET_*/DATABASE_*/…) a function
+  // gets — a worker is just a container with the same env contract.
+  async ensureWorkers(
+    workers: AppConfig["workers"],
+    appName: string,
+    cwd: string,
+    envVars: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    // Same rewrite functions get: Floci hands back `localhost:4566` URLs, which point at the
+    // container itself once the task is running inside Floci's network.
+    const localized =
+      this.target === "local"
+        ? Object.fromEntries(
+            Object.entries(envVars).map(([k, v]) => [
+              k,
+              v.replaceAll("localhost:4566", "host.docker.internal:4566"),
+            ]),
+          )
+        : envVars;
+    return ensureWorkers(
+      this.clients.ecs,
+      this.clients.ecr,
+      this.clients.ec2,
+      workers,
+      appName,
+      cwd,
+      this.roleArn,
+      {
+        ...localized,
+        // On AWS a task gets credentials from its task role via the ECS metadata endpoint, and
+        // Floci injects them into Lambda containers — but NOT into ECS task containers, so any
+        // SDK call inside a worker fails to sign locally. Same dummy pair the CLI's own local
+        // clients use (LOCAL_CFG). Never injected on --target aws: real creds come from the role.
+        ...(this.target === "local"
+          ? {
+              AWS_ENDPOINT_URL: LAMBDA_LOCAL_ENDPOINT,
+              AWS_ACCESS_KEY_ID: "test",
+              AWS_SECRET_ACCESS_KEY: "test",
+              AWS_DEFAULT_REGION: "us-east-1",
+              AWS_REGION: "us-east-1",
+            }
+          : {}),
+      },
+      this.tags,
+      this.target === "local",
+    );
   }
 
   async ensureSecrets(secrets: string[], env: Record<string, string | undefined>, prefix: string) {
@@ -778,6 +894,7 @@ export class AwsProvider {
     return deployFrontendAws(
       this.clients.s3,
       this.clients.cloudfront,
+      this.clients.acmUsEast1,
       frontend,
       appName,
       cwd,
