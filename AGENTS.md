@@ -387,9 +387,20 @@ policy IDs are global constants. `CustomErrorResponses` (403/404 → `/index.htm
 routing. ponytail: CloudFront is create-only (idempotent by `Comment`) — it does NOT update an
 existing distribution, so a config fix like this needs `slsv destroy --target aws` + redeploy (or
 a manual console edit) to take effect on already-deployed distributions. **Exception: the custom
-domain (`Aliases`/`ViewerCertificate`) IS converged** on redeploy (add/change/drop
-`frontend.domain` works in place via `UpdateDistribution`) — adding a domain to an
-already-deployed distribution is the common path, so it can't wait for destroy+redeploy.
+domain (`Aliases`/`ViewerCertificate`) and `frontend.cacheTtl` ARE converged** on redeploy
+(add/change/drop `frontend.domain`, tune `cacheTtl`, in place via `UpdateDistribution`) — adding
+a domain / tuning the TTL on an already-deployed distribution is the common path, so it can't
+wait for destroy+redeploy.
+
+**Edge cache (`frontend.cacheTtl` + `frontend.invalidate`):** the default behavior uses legacy
+`ForwardedValues` with `MinTTL: 0` and no `DefaultTTL` → CloudFront's default **24h**, and the
+S3 website origin sends no `Cache-Control`, so `DefaultTTL` IS the effective edge TTL —
+`index.html` (unhashed) went stale up to 24h after a redeploy while hashed assets were fine.
+`cacheTtl: <secs>` (0–31536000) sets `DefaultTTL` (create + converged on redeploy);
+`invalidate` (default **true**) fires a `CreateInvalidation` on `/*` after each redeploy of an
+existing distribution (skipped on first create — no stale cache yet; `/*` counts as ONE path,
+first 1000/month free), so the new build serves immediately. `invalidate: false` opts out (wait
+out `cacheTtl` instead). Both are no-ops without `cloudfront`/`domain` and on `--target local`.
 Because `/api/*` becomes same-origin under the CloudFront domain, `deployFrontendAws` skips the
 `VITE_SLSV_API_URL` injection in this mode (relative `/api` just works — no CORS needed either).
 Idempotent via `ListDistributions` + find-by-`Comment` (`slsv:<appName>`), no id tracked.

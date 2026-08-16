@@ -243,6 +243,13 @@ frontend:
   # Implies cloudfront: true. Ignored on --target local.
   # certArn: arn:aws:acm:us-east-1:…  # default none. BYO pre-validated us-east-1 cert
   # (e.g. a wildcard) instead of slsv minting one.
+  # cacheTtl: 3600                    # secs, default 86400 (CloudFront's 24h). How long edges
+  # cache frontend files (S3 origin sends no Cache-Control,
+  # so this is the effective TTL). Converged on redeploy.
+  # invalidate: true                  # default true. CloudFront invalidation (/*) after each
+  # deploy so the new build serves immediately; false =
+  # wait out cacheTtl instead. /* counts as one path
+  # (first 1000/month free).
 
 # ── Per-stage overrides (optional) ──────────────────────────────────────────
 # `stages.<name>` deep-merges over the base above for `--stage <name>`. Override ONLY

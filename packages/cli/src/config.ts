@@ -94,6 +94,14 @@ const FrontendConfig = z.object({
   domain: z.string().optional(),
   // Reuse a pre-validated us-east-1 ACM cert (e.g. a wildcard) instead of minting one.
   certArn: z.string().optional(),
+  // CloudFront edge-cache DefaultTTL in seconds for the frontend files (how long an edge keeps
+  // an object when the origin sends no Cache-Control — the S3 website origin sends none).
+  // Omit → CloudFront's default 86400 (24h). Converged on redeploy. Needs cloudfront/domain.
+  cacheTtl: z.number().int().min(0).max(31536000).optional(),
+  // Create a CloudFront invalidation (/*) after each deploy so the new build serves immediately
+  // instead of stale edge copies (up to cacheTtl old). Default true. First 1000 paths/month
+  // free; /* counts as one path. Needs cloudfront/domain.
+  invalidate: z.boolean().optional(),
 });
 
 const BucketConfig = z

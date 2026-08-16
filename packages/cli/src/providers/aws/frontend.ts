@@ -12,6 +12,7 @@ import {
   CloudFrontClient,
   ListDistributionsCommand,
   CreateDistributionCommand,
+  CreateInvalidationCommand,
   GetDistributionConfigCommand,
   UpdateDistributionCommand,
   DeleteDistributionCommand,
@@ -214,7 +215,15 @@ export async function deployFrontendAws(
       const certArn = frontend.certArn ?? (await ensureCert(acm, frontend.domain, zoneId));
       custom = { domain: frontend.domain, certArn };
     }
-    const distUrl = await ensureDistribution(cf, appName, s3WebsiteDomain, apiDomain, tags, custom);
+    const distUrl = await ensureDistribution(
+      cf,
+      appName,
+      s3WebsiteDomain,
+      apiDomain,
+      tags,
+      frontend,
+      custom,
+    );
     if (custom && zoneId) {
       // DNS-only (unproxied), same as the API CNAME. The domain serves once the distribution
       // finishes deploying (~15-20 min on first create).
@@ -235,6 +244,7 @@ async function ensureDistribution(
   s3WebsiteDomain: string,
   apiDomain: string | undefined,
   tags: Record<string, string>,
+  frontend: FrontendDef,
   custom?: { domain: string; certArn: string },
 ): Promise<string> {
   const comment = `slsv:${appName}`;
@@ -256,23 +266,46 @@ async function ensureDistribution(
   );
   const found = existing.find((d) => d.Comment === comment);
   if (found) {
-    // Unlike the rest of the distribution config (create-only), the custom domain IS converged —
-    // adding frontend.domain to an already-deployed distribution is the common path (deploy
-    // first, add the domain later), so drift here can't wait for destroy+redeploy.
+    // Unlike the rest of the distribution config (create-only), the custom domain and cacheTtl
+    // ARE converged — adding frontend.domain / tuning cacheTtl on an already-deployed
+    // distribution is the common path, so drift here can't wait for destroy+redeploy.
     const current = found.Aliases?.Items ?? [];
-    if (current.join(",") !== aliases.Items.join(",")) {
-      console.log(`  updating distribution aliases → [${aliases.Items.join(", ")}]`);
+    const aliasDrift = current.join(",") !== aliases.Items.join(",");
+    if (aliasDrift || frontend.cacheTtl !== undefined) {
       const { DistributionConfig, ETag } = await cf.send(
         new GetDistributionConfigCommand({ Id: found.Id }),
       );
+      const dc = DistributionConfig!;
+      const ttlDrift =
+        frontend.cacheTtl !== undefined &&
+        dc.DefaultCacheBehavior!.DefaultTTL !== frontend.cacheTtl;
+      if (aliasDrift || ttlDrift) {
+        if (aliasDrift)
+          console.log(`  updating distribution aliases → [${aliases.Items.join(", ")}]`);
+        if (ttlDrift) {
+          console.log(`  updating distribution cacheTtl → ${frontend.cacheTtl}s`);
+          dc.DefaultCacheBehavior!.DefaultTTL = frontend.cacheTtl;
+        }
+        await cf.send(
+          new UpdateDistributionCommand({
+            Id: found.Id,
+            IfMatch: ETag,
+            DistributionConfig: { ...dc, Aliases: aliases, ViewerCertificate: viewerCert },
+          }),
+        );
+      }
+    }
+    // Fresh build just landed in S3 — flush stale edge copies so it serves immediately.
+    // Default on; frontend.invalidate: false opts out (rely on cacheTtl expiry instead).
+    // Skipped on create below: a brand-new distribution has no stale cache.
+    if (frontend.invalidate !== false) {
+      console.log("  invalidating CloudFront cache (/*)");
       await cf.send(
-        new UpdateDistributionCommand({
-          Id: found.Id,
-          IfMatch: ETag,
-          DistributionConfig: {
-            ...DistributionConfig!,
-            Aliases: aliases,
-            ViewerCertificate: viewerCert,
+        new CreateInvalidationCommand({
+          DistributionId: found.Id,
+          InvalidationBatch: {
+            CallerReference: `slsv-${Date.now()}`,
+            Paths: { Quantity: 1, Items: ["/*"] },
           },
         }),
       );
@@ -333,6 +366,9 @@ async function ensureDistribution(
             Cookies: { Forward: "none" },
           },
           MinTTL: 0,
+          // Omitted → CloudFront's default 86400 (24h). S3 website origin sends no
+          // Cache-Control, so DefaultTTL is what edges actually use.
+          ...(frontend.cacheTtl !== undefined && { DefaultTTL: frontend.cacheTtl }),
           Compress: true,
         },
         CacheBehaviors: apiDomain
