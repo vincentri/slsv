@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import os from "os";
-import { loadConfig, ConfigError, fargateDefaultMemory } from "./config.js";
+import { loadConfig, ConfigError, fargateDefaultMemory, bucketTriggers } from "./config.js";
 
 // Exercises the `stages:` overlay: deep-merge, scalar override, and null-removal trigger swap.
 describe("loadConfig stage overlay", () => {
@@ -300,5 +300,16 @@ workers:
     memory: 4096
 `);
     expect(() => loadConfig(tmp, "dev")).toThrow(/workers\.clip\.memory/);
+  });
+});
+
+describe("bucket trigger", () => {
+  it("normalizes single object and array to the same shape", () => {
+    expect(bucketTriggers({})).toEqual([]);
+    expect(bucketTriggers({ bucket: { name: "a" } })).toEqual([{ name: "a" }]);
+    expect(bucketTriggers({ bucket: [{ name: "a" }, { name: "b", suffix: ".csv" }] })).toEqual([
+      { name: "a" },
+      { name: "b", suffix: ".csv" },
+    ]);
   });
 });

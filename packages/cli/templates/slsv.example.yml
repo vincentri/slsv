@@ -48,6 +48,20 @@ functions:
         source: ["orders"]
         detail-type: ["order.placed"]
 
+  makeThumbnail:
+    runtime: nodejs24
+    handler: ./src/thumb.handler
+    bucket: # S3 event trigger — invoked when an object lands in (or leaves) the bucket
+      name: uploads # must be declared under buckets: below
+      events: [created] # created | removed (default [created])
+      prefix: raw/ # optional key filter — also the guard against write-back loops
+      suffix: .jpg #   (a fn writing results into the SAME bucket it listens on)
+    # or an array — multiple buckets (or several filter blocks) into ONE fn; the handler
+    # tells sources apart via event.Records[0].s3.bucket.name:
+    # bucket:
+    #   - { name: uploads, suffix: .jpg }
+    #   - { name: imports }
+
   authorizer:                          # a normal fn with NO trigger — referenced by `api.auth` below.
     runtime: nodejs24                  #   API Gateway invokes it before every protected route.
     handler: ./src/auth.handler        #   Return { isAuthorized: bool, context? } — deny → 403.
@@ -121,6 +135,7 @@ queues:
 
 buckets:
   private: {} # only Lambda reads/writes
+  uploads: {} # target of the makeThumbnail bucket trigger above
   # public:                                     # browser reads objects via the bucket URL
   #   publicRead: true                          # → s3:GetObject policy + access blocks off
   # uploads:                                    # browser uploads via presigned PUT

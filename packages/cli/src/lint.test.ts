@@ -132,6 +132,15 @@ describe("lintApp", () => {
     expect(() => lintApp(cfg, tmp)).toThrow(/queue trigger 'missing' not declared/);
   });
 
+  it("errors on a bucket trigger with no matching bucket", () => {
+    write("src/thumb.ts", `export const handler = async () => 1`);
+    const cfg = {
+      app: "x",
+      functions: { thumb: fn("./src/thumb.handler", { bucket: { name: "missing" } }) },
+    } as unknown as AppConfig;
+    expect(() => lintApp(cfg, tmp)).toThrow(/bucket trigger 'missing' not declared/);
+  });
+
   it("warns (does not throw) on a declared-but-unused resource", () => {
     write("src/api.ts", `export const handler = async () => 1`);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

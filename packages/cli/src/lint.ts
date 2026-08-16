@@ -2,7 +2,7 @@ import { readFileSync, existsSync, readdirSync } from "fs";
 import { spawnSync } from "child_process";
 import path from "path";
 import type { AppConfig } from "./config.js";
-import { ConfigError, dlqName } from "./config.js";
+import { ConfigError, dlqName, bucketTriggers } from "./config.js";
 
 // Preflight lint run before every dev/deploy: does slsv.yml actually match the code?
 // Three checks — (1) each function's handler file exists and exports the named symbol,
@@ -100,6 +100,11 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
   // DLQ targets aren't called via `queue(name)` in code; they're attached via RedrivePolicy
   // by another queue's `dlq:` field (incl. auto-named `<name>Failed` when `dlq: true`) —
   // treat all of those as referenced.
+  // A bucket consumed as an S3 trigger (`functions.<fn>.bucket`) is used even if no code
+  // calls storage(name) — the fn RECEIVES from it.
+  const bucketTriggerTargets = new Set(
+    Object.values(cfg.functions ?? {}).flatMap((f) => bucketTriggers(f).map((t) => t.name)),
+  );
   const dlqTargets = new Set(
     Object.entries(cfg.queues ?? {})
       .map(([name, q]) => dlqName(name, q.dlq))
@@ -107,7 +112,11 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
   );
   for (const accessor of Object.keys(nameSets))
     for (const declared of nameSets[accessor])
-      if (!referenced[accessor].has(declared) && !(accessor === "queue" && dlqTargets.has(declared)))
+      if (
+        !referenced[accessor].has(declared) &&
+        !(accessor === "queue" && dlqTargets.has(declared)) &&
+        !(accessor === "storage" && bucketTriggerTargets.has(declared))
+      )
         warnings.push(
           `${ACCESSOR_LABEL[accessor]} '${declared}' declared in slsv.yml but never used in code`,
         );
@@ -116,6 +125,10 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
   for (const [name, fn] of Object.entries(cfg.functions ?? {}))
     if (fn.queue && !nameSets.queue.has(fn.queue.name))
       errors.push(`function ${name}: queue trigger '${fn.queue.name}' not declared in queues:`);
+  for (const [name, fn] of Object.entries(cfg.functions ?? {}))
+    for (const t of bucketTriggers(fn))
+      if (!nameSets.storage.has(t.name))
+        errors.push(`function ${name}: bucket trigger '${t.name}' not declared in buckets:`);
   // DLQ targets are auto-provisioned by sqs.ts (`dlq: true` → `<name>Failed`, or any named
   // string); nothing to validate here.
 

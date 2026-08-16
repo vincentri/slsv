@@ -592,7 +592,16 @@ handler locally.
 ### Function triggers
 
 `http` · `queue` (SQS) · `cron` (EventBridge schedule) · `event` (EventBridge event-pattern
-— `event: { pattern: {...} }`, default bus, invokes on match). `cron` and `event` are wired
+— `event: { pattern: {...} }`, default bus, invokes on match) · `bucket` (S3 notification —
+`bucket: { name, events?, prefix?, suffix? }` or an ARRAY of those blocks (multiple buckets /
+filters into one fn; handler splits on `Records[0].s3.bucket.name`; normalize via config.ts
+`bucketTriggers()`), events `created|removed` default `[created]`,
+prefix/suffix key filters; wired in `s3.ts` `ensureBucketTriggers`: AddPermission for
+s3.amazonaws.com BEFORE PutBucketNotificationConfiguration — real AWS validates the destination.
+The Put REPLACES the bucket's whole notification config, so it runs once per DECLARED bucket with
+the merged desired set — add/change/REMOVE all converge on redeploy, empty config clears a
+dropped trigger; no orphan sweep needed. ponytail: a manually-added notification on an
+slsv-managed bucket is overwritten every deploy). `cron` and `event` are wired
 together in `eventbridge.ts` (`ensureCronTriggers` + `ensureEventTriggers`), rule names
 `<app>-<stage>-<fn>` and `<app>-<stage>-<fn>-evt`. Reconcile sweeps both: a rule whose
 trigger (or whole function) was removed from the yml is pruned (targets cleared first —
@@ -702,7 +711,8 @@ functions:
     runtime: nodejs24 # nodejs22 | nodejs24 — honored (maps to `<runtime>.x`); platform (AWS/Floci) must support it
     handler: ./src/api.handler # file.export
     http: [{ method, path, auth? }] # OR queue: { name } OR cron: { schedule } OR event: { pattern }. auth: false = leave this route public when api.auth is set
-    # a trigger-less fn (handler only, no http/queue/cron/event) is valid — used as an api.auth authorizer
+    # OR bucket: { name, events?: [created|removed], prefix?, suffix? } — S3 event trigger (name must be a declared bucket); also takes an ARRAY of these blocks (multi-bucket fan-in to one fn)
+    # a trigger-less fn (handler only, no http/queue/cron/event/bucket) is valid — used as an api.auth authorizer
     timeout?: 30 # secs, 1-900 (default 30)
     memory?: 256 # MB, 128-10240 (default 256)
     architecture?: arm64 # arm64 (default) | x86_64; set at create only (immutable)

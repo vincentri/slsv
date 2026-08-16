@@ -11,6 +11,13 @@ const HttpRoute = z.object({
   auth: z.boolean().optional(),
 });
 
+const BucketTrigger = z.object({
+  name: z.string(), // must be declared under buckets:
+  events: z.array(z.enum(["created", "removed"])).nonempty().optional(), // default ['created']
+  prefix: z.string().optional(), // only keys starting with this fire
+  suffix: z.string().optional(), // only keys ending with this fire (e.g. '.csv')
+});
+
 const FunctionConfig = z.object({
   runtime: z.enum(["nodejs22", "nodejs24"]),
   handler: z.string(),
@@ -21,6 +28,12 @@ const FunctionConfig = z.object({
 
   cron: z.object({ schedule: z.string() }).optional(),
   event: z.object({ pattern: z.record(z.string(), z.any()) }).optional(), // EventBridge event-pattern trigger
+  // S3 event trigger: invoke when an object lands in (or leaves) a declared bucket.
+  // prefix/suffix scope the trigger to a key range — also the standard guard against
+  // write-back loops (fn writes results into the same bucket it listens on).
+  // One object or an array (multiple buckets / multiple filters into one fn, like http routes);
+  // the handler tells sources apart via event.Records[0].s3.bucket.name.
+  bucket: z.union([BucketTrigger, z.array(BucketTrigger).nonempty()]).optional(),
   timeout: z.number().int().min(1).max(900).optional(), // seconds (Lambda hard limit 900)
   memory: z.number().int().min(128).max(10240).optional(), // MB, 1MB steps
   environment: z.record(z.string(), z.string()).optional(), // custom env vars (bindings still win)
@@ -287,6 +300,13 @@ export type FrontendDef = z.infer<typeof FrontendConfig>;
 // ponytail: re-exported for the docs generator (scripts/docs/schema.ts). The runtime schema is
 // the same object — no behavior change.
 export const AppConfigSchema = AppConfig;
+
+// Normalize a function's `bucket:` trigger (single object or array) to an array.
+export function bucketTriggers(
+  fn: { bucket?: z.infer<typeof BucketTrigger> | z.infer<typeof BucketTrigger>[] },
+): z.infer<typeof BucketTrigger>[] {
+  return !fn.bucket ? [] : Array.isArray(fn.bucket) ? fn.bucket : [fn.bucket];
+}
 
 // Resolve a queue's DLQ logical name. `true` → `${queue}Failed`; a string is returned as-is;
 // absent → undefined. Callers (sqs.ts create, lint.ts unused-check) share this so the derived

@@ -7,7 +7,7 @@ export type FunctionOutput = { name: string; arn: string };
 import { ensureExecRole, deleteExecRole } from "./iam.js";
 import { ensureLogGroup, deleteLogGroup, listLambdaLogGroups } from "./logs.js";
 import { ensureDynamoTables } from "./dynamodb.js";
-import { ensureBuckets } from "./s3.js";
+import { ensureBuckets, ensureBucketTriggers } from "./s3.js";
 import { ensureQueues, type QueueOutput } from "./sqs.js";
 import { ensureSecrets } from "./secrets.js";
 import {
@@ -866,6 +866,27 @@ export class AwsProvider {
     if (!functions || !Object.values(functions).some((f) => f.queue)) return;
     console.log("→ SQS event source mappings");
     await ensureEventSourceMappings(this.clients.lambda, functions, fnOutputs, this.queueOutputs);
+  }
+
+  // S3 event triggers (`functions.<fn>.bucket`). Runs for every declared bucket — a Put with
+  // the merged desired config per bucket, so add/change/remove all converge on redeploy.
+  async wireBucketTriggers(
+    functions: AppConfig["functions"],
+    fnOutputs: Record<string, FunctionOutput>,
+    buckets: AppConfig["buckets"],
+    appName: string,
+  ) {
+    if (!buckets || !Object.keys(buckets).length) return;
+    if (Object.values(functions ?? {}).some((f) => f.bucket))
+      console.log("→ S3 bucket notifications");
+    await ensureBucketTriggers(
+      this.clients.s3,
+      this.clients.lambda,
+      functions,
+      fnOutputs,
+      buckets,
+      appName,
+    );
   }
 
   async wireCron(

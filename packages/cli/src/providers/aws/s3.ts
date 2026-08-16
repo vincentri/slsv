@@ -7,9 +7,14 @@ import {
   PutPublicAccessBlockCommand,
   PutBucketPolicyCommand,
   PutBucketCorsCommand,
+  PutBucketNotificationConfigurationCommand,
+  type Event,
+  type LambdaFunctionConfiguration,
 } from "@aws-sdk/client-s3";
+import { LambdaClient, AddPermissionCommand } from "@aws-sdk/client-lambda";
 import { asTagArray } from "./tags.js";
-import type { AppConfig } from "../../config.js";
+import { arnRegionAccount } from "./eventbridge.js";
+import { bucketTriggers, type AppConfig } from "../../config.js";
 
 export async function ensureBuckets(
   s3: S3Client,
@@ -90,4 +95,75 @@ export async function ensureBuckets(
   }
 
   return envVars;
+}
+
+// --- S3 event trigger (`functions.<fn>.bucket`) ---
+// Wires `bucket: { name, events?, prefix?, suffix? }` to Lambda via bucket notifications.
+// PutBucketNotificationConfiguration REPLACES the bucket's whole config, so this runs once
+// per DECLARED bucket with the full desired set (all fns triggering on it, merged) — which
+// also converges removal: dropping the trigger from the yml clears it on the next deploy.
+// AddPermission must land BEFORE the Put — real AWS validates the destination and rejects
+// the config if S3 can't invoke the fn. ponytail: a manually-added notification on an
+// slsv-managed bucket is overwritten every deploy (slsv owns its buckets' config).
+export async function ensureBucketTriggers(
+  s3: S3Client,
+  lambda: LambdaClient,
+  functions: AppConfig["functions"],
+  fnOutputs: Record<string, { name: string; arn: string }>,
+  buckets: AppConfig["buckets"],
+  appName: string,
+) {
+  const S3_EVENTS: Record<string, Event> = {
+    created: "s3:ObjectCreated:*",
+    removed: "s3:ObjectRemoved:*",
+  };
+
+  for (const logical of Object.keys(buckets ?? {})) {
+    const bucketName = `${appName}-${logical}`.toLowerCase();
+    const configs: LambdaFunctionConfiguration[] = [];
+
+    for (const [fnName, fn] of Object.entries(functions ?? {})) {
+      const triggers = bucketTriggers(fn).filter((t) => t.name === logical);
+      if (!triggers.length) continue;
+      const fnOutput = fnOutputs[fnName];
+      const { account } = arnRegionAccount(fnOutput.arn);
+
+      try {
+        await lambda.send(
+          new AddPermissionCommand({
+            FunctionName: fnOutput.name,
+            StatementId: `s3-${bucketName}`,
+            Action: "lambda:InvokeFunction",
+            Principal: "s3.amazonaws.com",
+            SourceArn: `arn:aws:s3:::${bucketName}`,
+            SourceAccount: account, // confused-deputy guard: bucket ARNs carry no account
+          }),
+        );
+      } catch (e: any) {
+        if (e.name !== "ResourceConflictException") throw e;
+      }
+
+      triggers.forEach((t, i) => {
+        const rules = [
+          ...(t.prefix ? [{ Name: "prefix" as const, Value: t.prefix }] : []),
+          ...(t.suffix ? [{ Name: "suffix" as const, Value: t.suffix }] : []),
+        ];
+        configs.push({
+          // `-<i>` keeps Ids unique when one fn has several filter blocks on the same bucket.
+          Id: `slsv-${fnOutput.name}-${i}`,
+          LambdaFunctionArn: fnOutput.arn,
+          Events: (t.events ?? ["created"]).map((e) => S3_EVENTS[e]),
+          ...(rules.length && { Filter: { Key: { FilterRules: rules } } }),
+        });
+      });
+    }
+
+    await s3.send(
+      new PutBucketNotificationConfigurationCommand({
+        Bucket: bucketName,
+        // Empty config when no fn triggers on this bucket — clears a dropped trigger.
+        NotificationConfiguration: configs.length ? { LambdaFunctionConfigurations: configs } : {},
+      }),
+    );
+  }
 }

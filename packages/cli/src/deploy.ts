@@ -98,6 +98,7 @@ export async function deploy(
       provider.wireHttp(functions, fnOutputs, prefix, cfg.api?.cors, cfg.api?.auth),
       provider.wireQueues(functions, fnOutputs),
       provider.wireCron(functions, fnOutputs, prefix),
+      provider.wireBucketTriggers(functions, fnOutputs, cfg.buckets, prefix),
     ]);
 
     // Custom API domain (aws-only). If set, it becomes the API's public URL — so the frontend
