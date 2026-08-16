@@ -1,5 +1,13 @@
 # @slsv/sdk
 
+## 0.2.3
+
+### Patch Changes
+
+- dbac253: New `bucket:` function trigger — S3 event notifications. `bucket: { name, events?: [created|removed], prefix?, suffix? }` or an array of those blocks (multiple buckets/filters fan-in to one function). Wired via AddPermission + PutBucketNotificationConfiguration, merged per declared bucket so add/change/remove converge on redeploy. Lint validates the target bucket is declared; a trigger-target bucket no longer warns as unused. Verified end-to-end on Floci.
+- a19da05: EventBridge publish support: `emit(detailType, detail, { source? })` in @slsv/sdk puts an event on the default bus (Source defaults to the app name via new SLSV_APP env, injected into every function), throwing on per-entry failure. Exec role gains `events:PutEvents` scoped to the default bus, so producers need no manual IAM. Consumers keep subscribing with `event: { pattern }` — works across separate slsv apps on the shared default bus. Verified end-to-end on Floci.
+- 2f73d89: Reconcile now prunes secrets dropped from slsv.yml under the same `autoRemove` gate as data stores (report-only by default; deleted with `ForceDeleteWithoutRecovery` when `autoRemove: true`). `slsv plan` classifies secret orphans as destructive deletes accordingly. Stage prefix keeps sibling stages' secrets untouched.
+
 ## 0.2.2
 
 ### Patch Changes
