@@ -1,5 +1,13 @@
 # @slsv/cli
 
+## 0.2.2
+
+### Patch Changes
+
+- 418d74f: feat(frontend): `cacheTtl` sets CloudFront edge DefaultTTL (converged on redeploy); `invalidate` (default true) flushes the edge cache (`/*`) after each redeploy so the new build serves immediately
+- Updated dependencies [418d74f]
+  - @slsv/sdk@0.2.2
+
 ## 0.2.1
 
 ### Patch Changes
