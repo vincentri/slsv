@@ -72,6 +72,14 @@ function dataPolicy(appName: string): string {
         Resource: [`arn:aws:s3:::${appName}-*`, `arn:aws:s3:::${appName}-*/*`],
       },
       {
+        // emit() in @slsv/sdk — producers publish domain events onto the DEFAULT bus (the only
+        // bus slsv wires; consumers subscribe via `event: { pattern }`). Bus-scoped, not
+        // `<app>-<stage>-*`: cross-app fan-out (app A emits, app B listens) is the point.
+        Effect: "Allow",
+        Action: "events:PutEvents",
+        Resource: "arn:aws:events:*:*:event-bus/default",
+      },
+      {
         Effect: "Allow",
         Action: "secretsmanager:GetSecretValue",
         Resource: `arn:aws:secretsmanager:*:*:secret:${appName}-*`,

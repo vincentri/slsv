@@ -605,8 +605,15 @@ slsv-managed bucket is overwritten every deploy). `cron` and `event` are wired
 together in `eventbridge.ts` (`ensureCronTriggers` + `ensureEventTriggers`), rule names
 `<app>-<stage>-<fn>` and `<app>-<stage>-<fn>-evt`. Reconcile sweeps both: a rule whose
 trigger (or whole function) was removed from the yml is pruned (targets cleared first —
-AWS refuses DeleteRule while targets exist). Sending events (to test) is app side:
-PutEvents via SDK/CLI onto the default bus.
+AWS refuses DeleteRule while targets exist). **Publishing is `emit()` in `@slsv/sdk`**
+(`sdk/providers/aws/events.ts`): `await emit('email.send', { ... }, { source? })` → PutEvents
+onto the default bus; `Source` defaults to `SLSV_APP` (the app name, injected into every fn at
+deploy), so consumers pattern-match `source: ['<producer-app>']`. Works CROSS-APP (any slsv app
+in the account shares the default bus) — the exec role grants `events:PutEvents` scoped to the
+default bus. PutEvents reports per-entry failure without throwing, so emit() checks
+`FailedEntryCount` and throws (silent event loss otherwise). Verified end-to-end on Floci:
+producer Lambda emit() → rule match → consumer Lambda, detail intact. ponytail: default bus
+only, single entry per call — batch/custom-bus when a real app needs them.
 
 ### Workers (container jobs, ECS Fargate)
 

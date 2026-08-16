@@ -83,6 +83,7 @@ export async function deploy(
       ...cacheEnvs,
       ...dbEnvs,
       SLSV_STAGE: stage,
+      SLSV_APP: cfg.app, // emit() default event Source — producer identity for consumers' patterns
     };
 
     // Workers before functions, both ways round: the task definition needs the store bindings,

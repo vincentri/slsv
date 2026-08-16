@@ -44,6 +44,8 @@ functions:
     runtime: nodejs24
     handler: ./src/on-order.handler
     event: # EventBridge event-pattern — invoked when a matching event hits the default bus
+      #      producers publish with `emit('order.placed', {...})` from @slsv/sdk (source
+      #      defaults to the producer's app name — works across separate slsv apps)
       pattern:
         source: ["orders"]
         detail-type: ["order.placed"]

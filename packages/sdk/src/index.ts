@@ -6,6 +6,7 @@ import { makeCache } from "./providers/aws/cache.js";
 import { getSecret } from "./providers/aws/secret.js";
 import { makeSql } from "./providers/aws/sql.js";
 import { makeWorker } from "./providers/aws/worker.js";
+export { emit } from "./providers/aws/events.js";
 
 export {
   json,
