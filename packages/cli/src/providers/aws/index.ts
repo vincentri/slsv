@@ -411,9 +411,9 @@ export class AwsProvider {
    * manifest (e.g. a renamed/removed function). Keeps `slsv.yml` the source of truth.
    *
    * Safety split: Lambda functions are auto-deleted (stateless, exact-named, the common
-   * case). Data stores (DynamoDB / S3 / RDS) are NEVER auto-deleted — orphans are only
-   * reported, so a table/bucket/db dropped from the yml can't silently take its data with
-   * it. Use `slsv destroy` (or delete manually) to remove those on purpose.
+   * case). Data stores (DynamoDB / S3 / RDS) and secrets are NEVER auto-deleted by default —
+   * orphans are only reported, so a table/bucket/db/secret dropped from the yml can't silently
+   * take its data with it. Set `autoRemove: true` (or use `slsv destroy`) to remove them.
    */
   // Read-only two-way diff of live AWS vs slsv.yml. No mutation. Backs `slsv plan` and the
   // deploy preview.
@@ -623,6 +623,23 @@ export class AwsProvider {
                 DeleteAutomatedBackups: true,
               }),
             )
+            .then(() => undefined),
+        );
+
+    // --- Secrets --- same autoRemove gate as data stores: the value is re-creatable from
+    // `.env.<stage>`, but deleting it is still destructive (ForceDeleteWithoutRecovery, matches
+    // destroy) — report-only by default. Stage prefix keeps sibling stages' secrets invisible.
+    const wantSecrets = new Set(cfg.secrets ?? []);
+    const allSecrets = await paginate((NextToken) =>
+      this.clients.secrets
+        .send(new ListSecretsCommand({ NextToken }))
+        .then((r) => ({ items: r.SecretList ?? [], next: r.NextToken })),
+    );
+    for (const s of allSecrets)
+      if (owned(s.Name) && !wantSecrets.has(logical(s.Name)))
+        await handleOrphan(`secret ${s.Name}`, () =>
+          this.clients.secrets
+            .send(new DeleteSecretCommand({ SecretId: s.Name, ForceDeleteWithoutRecovery: true }))
             .then(() => undefined),
         );
 

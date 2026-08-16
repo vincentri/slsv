@@ -253,14 +253,16 @@ from `slsv.yml` actually tears it down — keeps the manifest the source of trut
 split: **Lambda functions + EventBridge rules are auto-pruned** (stateless, exact-named
 `<app>-<stage>-<fn>` / `<app>-<stage>-<fn>-evt`, the common rename/remove case — a dropped
 cron/event trigger would otherwise leave its rule firing, which is wrong behavior, not
-cosmetic). **Data stores (DynamoDB / S3 buckets / RDS) are report-only by default** (`autoRemove`,
-top-level, default **false** — safe-for-prod: dropping a store from the yml can't silently take
-its data with it). An orphan table/bucket/db is warned and left until `slsv destroy`. Set
-**`autoRemove: true`** (opt-in, destructive) to DELETE such orphans on the next deploy (via
-`handleOrphan` → `DeleteTableCommand` / `emptyAndDeleteBucket` / `DeleteDBInstanceCommand` with
-`SkipFinalSnapshot`) so the manifest becomes the full source of truth — the store takes its data
-with it. (SQS queues, secrets, and caches are **never** pruned by reconcile at all — only
-`slsv destroy` removes them; `slsv plan` reports them as `orphan`.)
+cosmetic). **Data stores (DynamoDB / S3 buckets / RDS) and secrets are report-only by default**
+(`autoRemove`, top-level, default **false** — safe-for-prod: dropping a store from the yml can't
+silently take its data with it). An orphan table/bucket/db/secret is warned and left until
+`slsv destroy`. Set **`autoRemove: true`** (opt-in, destructive) to DELETE such orphans on the
+next deploy (via `handleOrphan` → `DeleteTableCommand` / `emptyAndDeleteBucket` /
+`DeleteDBInstanceCommand` with `SkipFinalSnapshot` / `DeleteSecretCommand` with
+`ForceDeleteWithoutRecovery` — same as destroy; value re-creatable from `.env.<stage>`, and the
+stage prefix keeps sibling stages' secrets out of the scan) so the manifest becomes the full
+source of truth — the store takes its data with it. (SQS queues and caches are **never** pruned
+by reconcile at all — only `slsv destroy` removes them; `slsv plan` reports them as `orphan`.)
 RDS orphan delete always skips the final snapshot (the removed yml no longer carries
 `skipFinalSnapshot`). **Exception — the frontend (S3 hosting bucket `<app>-<stage>-frontend` +
 CloudFront distribution) is auto-torn-down** when `frontend:` is dropped from the yml: it's a
@@ -291,8 +293,8 @@ source of truth; there's no "last-applied" to go stale. The contract:
 
 - **In yml, not in AWS** → `create` on deploy (get-or-create).
 - **In AWS, not in yml (orphan)** → Lambda always pruned (stateless); data stores (Dynamo/S3/
-  RDS) `delete` only under `autoRemove: true` else reported (`orphan`); SQS/secrets/caches never
-  pruned by deploy (`orphan`, remove via `slsv destroy`).
+  RDS) and secrets `delete` only under `autoRemove: true` else reported (`orphan`); SQS/caches
+  never pruned by deploy (`orphan`, remove via `slsv destroy`).
 - **In both, config differs** → deploy **converges** *mutable* fields toward yml (already true
   for Lambda config via `UpdateFunctionConfiguration` and API CORS via `UpdateApiCommand`;
   SQS/S3/RDS/cache converge is a follow-up). *Immutable* fields (Lambda `architecture`, Dynamo
@@ -723,7 +725,7 @@ workers: { name: { image: ./dir, cpu?, memory?, ephemeralStorage?, architecture?
 secrets: [ENV_VAR_NAME]
 tags: { KEY: value } # optional; custom tags added to every resource (on top of slsv:* tags)
 logRetentionDays: 14 # optional; CloudWatch log retention (default 14, 0 = never). Must be a CloudWatch-allowed value; applied every deploy
-autoRemove: false # optional (default false, safe); true = on deploy DELETE data stores (DynamoDB/S3/RDS) dropped from the yml — destructive. false = report-only, remove via `slsv destroy`
+autoRemove: false # optional (default false, safe); true = on deploy DELETE data stores (DynamoDB/S3/RDS) and secrets dropped from the yml — destructive. false = report-only, remove via `slsv destroy`
 stages: { <name>: { <partial-config> } } # optional; deep-merged over base for --stage <name> (null removes a key)
 ```
 

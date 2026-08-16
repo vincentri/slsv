@@ -87,16 +87,22 @@ describe("classify", () => {
     expect(c?.destructive).toBe(true);
   });
 
-  it("orphans a queue/secret/cache the deploy never prunes", () => {
+  it("orphans a queue/cache the deploy never prunes", () => {
     const r = classify(cfg({ autoRemove: true }), "dev", {
       ...EMPTY,
       queues: ["shop-dev-jobs"],
-      secrets: ["shop-dev-API_KEY"],
       caches: ["shop-dev-session"],
     });
     expect(find(r, "queue", "jobs")?.action).toBe("orphan");
-    expect(find(r, "secret", "API_KEY")?.action).toBe("orphan");
     expect(find(r, "cache", "session")?.action).toBe("orphan");
+  });
+
+  it("secret orphan follows autoRemove like a data store", () => {
+    const liveSecret = { ...EMPTY, secrets: ["shop-dev-API_KEY"] };
+    expect(find(classify(cfg({}), "dev", liveSecret), "secret", "API_KEY")?.action).toBe("orphan");
+    const c = find(classify(cfg({ autoRemove: true }), "dev", liveSecret), "secret", "API_KEY");
+    expect(c?.action).toBe("delete");
+    expect(c?.destructive).toBe(true);
   });
 
   it("matches a fifo queue by its .fifo suffix (no false create/delete)", () => {

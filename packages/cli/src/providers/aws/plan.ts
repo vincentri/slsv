@@ -23,7 +23,7 @@ import { paginate } from "./index.js";
 // cache Update* coverage) — plan already reports what it can read.
 
 // "orphan" = exists under this app+stage but absent from the yml AND deploy won't touch it
-// (SQS/secrets/caches — reconcile only auto-prunes Lambda + data stores). Reported so the user
+// (SQS/caches — reconcile only auto-prunes Lambda + data stores/secrets). Reported so the user
 // can `slsv destroy` it; never deleted by a deploy.
 export type ChangeAction = "create" | "update" | "replace" | "delete" | "orphan";
 
@@ -69,8 +69,8 @@ const DEFAULTS = {
 
 // What a deploy does with a live resource that's no longer in the yml:
 //   "prune" — always deleted on deploy (Lambda). Non-destructive (stateless).
-//   "data"  — data store: DELETED only if autoRemove, else reported and kept.
-//   "keep"  — deploy never prunes it (SQS/secrets/caches); reported as orphan.
+//   "data"  — data store/secret: DELETED only if autoRemove, else reported and kept.
+//   "keep"  — deploy never prunes it (SQS/caches); reported as orphan.
 type OrphanPolicy = "prune" | "data" | "keep";
 
 // Pure diff: desired (cfg) vs actual (live). No IO — the test target.
@@ -228,11 +228,14 @@ export function classify(
   }
   diff("queue", wantQueues, live.queues);
 
-  // --- Secrets (presence) ---
+  // --- Secrets (presence) --- same autoRemove gate as data stores (reconcile deletes under
+  // autoRemove: true; value re-creatable from .env.<stage> but the delete is unrecoverable).
   diff(
     "secret",
     new Map((cfg.secrets ?? []).map((n) => [`${pfx}${n}`, n])),
     live.secrets,
+    undefined,
+    "data",
   );
 
   // --- Caches (presence; nodeType diff is follow-up) ---
