@@ -21,6 +21,7 @@ import { ensureCert, findMintedCert, deleteCertWhenFree } from "./domain.js";
 import { cfZoneIdForDomain, cfUpsertCname, cfDeleteByName } from "./cloudflare.js";
 import { createServer } from "node:http";
 import { execSync } from "child_process";
+import { createHash } from "node:crypto";
 import { createReadStream, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import { asTagArray } from "./tags.js";
@@ -53,15 +54,26 @@ function walkDir(dir: string): string[] {
     .map((e) => join(e.parentPath, e.name));
 }
 
+// Fingerprint of the env baked into the frontend build. Stored as a bucket tag on deploy;
+// `slsv plan` compares it against the current yml so a stage env change shows as an update
+// instead of "No changes". Key order normalized.
+export function frontendEnvHash(env: Record<string, string> | undefined): string {
+  const entries = Object.entries(env ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return createHash("sha256").update(JSON.stringify(entries)).digest("hex").slice(0, 32);
+}
+
+export const FRONTEND_ENV_TAG = "slsv:frontend-env";
+
 function runBuild(frontend: FrontendDef, cwd: string, apiUrl?: string) {
   if (!frontend.build) return;
   console.log(`  Building: ${frontend.build}`);
   // Auto-inject the deployed API base as VITE_SLSV_API_URL. Never touches VITE_API_URL, so
   // a user-set one (shell / frontend/.env) still wins in the frontend's resolution.
+  // frontend.env (already stage-merged by loadConfig) overrides same-named shell vars.
   execSync(frontend.build, {
     cwd,
     stdio: "inherit",
-    env: { ...process.env, VITE_SLSV_API_URL: apiUrl ?? "" },
+    env: { ...process.env, ...frontend.env, VITE_SLSV_API_URL: apiUrl ?? "" },
   });
 }
 
@@ -132,7 +144,12 @@ export async function deployFrontendAws(
   // instead of pointing the build at the API Gateway domain directly.
   runBuild(frontend, cwd, useCloudfront ? undefined : apiUrl);
 
-  await ensureBucketExists(s3, bucket, tags, { publicRead: true });
+  await ensureBucketExists(
+    s3,
+    bucket,
+    { ...tags, [FRONTEND_ENV_TAG]: frontendEnvHash(frontend.env) },
+    { publicRead: true },
+  );
 
   await s3.send(
     new PutBucketWebsiteCommand({

@@ -115,6 +115,10 @@ const FrontendConfig = z.object({
   // instead of stale edge copies (up to cacheTtl old). Default true. First 1000 paths/month
   // free; /* counts as one path. Needs cloudfront/domain.
   invalidate: z.boolean().optional(),
+  // Env vars injected into the `build` command (e.g. VITE_* baked into the bundle).
+  // Stage overlays deep-merge onto this: `stages.<stage>.frontend.env` wins per key.
+  // Declared keys override same-named shell vars — the yml is the deploy's source of truth.
+  env: z.record(z.string(), z.string()).optional(),
 });
 
 const BucketConfig = z

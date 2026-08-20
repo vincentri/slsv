@@ -39,6 +39,31 @@ stages:
             source: ['orders']
 `;
 
+  it("stage frontend.env deep-merges over base (stage wins per key)", () => {
+    write(`
+app: shop
+frontend:
+  src: ./dist
+  env:
+    VITE_AUTH_API_URL: https://dev-api.example.com
+    VITE_SHARED: keep
+stages:
+  prod:
+    frontend:
+      domain: admin.example.com
+      env:
+        VITE_AUTH_API_URL: https://api.example.com
+`);
+    const prod = loadConfig(tmp, "prod");
+    expect(prod.frontend!.env).toEqual({
+      VITE_AUTH_API_URL: "https://api.example.com",
+      VITE_SHARED: "keep",
+    });
+    expect(prod.frontend!.domain).toBe("admin.example.com");
+    const dev = loadConfig(tmp, "dev");
+    expect(dev.frontend!.env!.VITE_AUTH_API_URL).toBe("https://dev-api.example.com");
+  });
+
   it("base (no stage block match) is unchanged", () => {
     write(base);
     const cfg = loadConfig(tmp, "nonexistent");

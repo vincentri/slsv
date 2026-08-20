@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { classify, type LiveState } from "./plan.js";
+import { frontendEnvHash } from "./frontend.js";
 import type { AppConfig } from "../../config.js";
 
 // classify() is the pure two-way diff (yml vs live). Build a cfg + a hand-authored live state
@@ -162,5 +163,28 @@ describe("workers", () => {
   it("reports nothing when the family already matches", () => {
     const { changes } = classify(workerCfg, "dev", { ...EMPTY, workers: ["shop-dev-clip"] });
     expect(changes.filter((c) => c.kind === "worker")).toEqual([]);
+  });
+});
+
+describe("frontend env drift", () => {
+  const fe = (env?: Record<string, string>) =>
+    cfg({ frontend: { src: "./dist", env } as any });
+
+  it("flags an update when the deployed env hash differs from the yml", () => {
+    const live = { ...EMPTY, frontendEnvHash: frontendEnvHash({ VITE_X: "old" }) };
+    const c = find(classify(fe({ VITE_X: "new" }), "dev", live), "frontend", "frontend");
+    expect(c?.action).toBe("update");
+    expect(c?.detail).toContain("env changed");
+  });
+
+  it("no change when hashes match (key order irrelevant)", () => {
+    const live = { ...EMPTY, frontendEnvHash: frontendEnvHash({ A: "1", B: "2" }) };
+    expect(find(classify(fe({ B: "2", A: "1" }), "dev", live), "frontend", "frontend")).toBeUndefined();
+  });
+
+  it("silent when the bucket is untagged (pre-hash deploy) or frontend absent", () => {
+    expect(find(classify(fe({ VITE_X: "v" }), "dev", EMPTY), "frontend", "frontend")).toBeUndefined();
+    const live = { ...EMPTY, frontendEnvHash: frontendEnvHash(undefined) };
+    expect(find(classify(cfg({}), "dev", live), "frontend", "frontend")).toBeUndefined();
   });
 });

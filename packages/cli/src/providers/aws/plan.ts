@@ -4,7 +4,7 @@ import {
   DescribeTableCommand,
   type KeySchemaElement,
 } from "@aws-sdk/client-dynamodb";
-import { ListBucketsCommand } from "@aws-sdk/client-s3";
+import { ListBucketsCommand, GetBucketTaggingCommand } from "@aws-sdk/client-s3";
 import { ListQueuesCommand } from "@aws-sdk/client-sqs";
 import { ListSecretsCommand } from "@aws-sdk/client-secrets-manager";
 import { DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
@@ -15,6 +15,7 @@ import type { Clients } from "./clients.js";
 import { listWorkerFamilies } from "./workers.js";
 import { paginate } from "./index.js";
 import { appStagePrefix, frontendBucketName } from "../../utils/names.js";
+import { frontendEnvHash, FRONTEND_ENV_TAG } from "./frontend.js";
 
 // `slsv plan`: two-way diff (yml desired vs AWS actual — slsv keeps no state file). Read-only;
 // classifies each resource as create / update (a mutable field differs) / replace (an IMMUTABLE
@@ -56,6 +57,9 @@ export interface LiveState {
   secrets: string[]; // full names
   caches: string[]; // full names (replication group ids)
   workers: string[]; // task-definition family names
+  // `slsv:frontend-env` tag on the frontend bucket — hash of the env baked into the last
+  // deployed build. undefined = no bucket / pre-tag deploy (no drift reported either way).
+  frontendEnvHash?: string;
 }
 
 
@@ -249,6 +253,18 @@ export function classify(
     "prune",
   );
 
+  // --- Frontend (env drift only): the baked bundle can't be read back, so compare the env
+  // hash the last deploy tagged onto the bucket. Silent when untagged (pre-hash deploy).
+  if (cfg.frontend && live.frontendEnvHash !== undefined) {
+    if (live.frontendEnvHash !== frontendEnvHash(cfg.frontend.env))
+      changes.push({
+        action: "update",
+        kind: "frontend",
+        name: "frontend",
+        detail: "build env changed — rebuild + upload",
+      });
+  }
+
   return { changes };
 }
 
@@ -341,6 +357,12 @@ export async function computePlan(
     .filter((n) => n.startsWith(lcPfx) && n !== frontendBucket);
 
   const queues = queueUrls.map((u) => u.split("/").pop()!).filter(owned);
+
+  // Frontend bucket env-hash tag (absent bucket / no tag → undefined → no drift check).
+  const liveFrontendEnvHash = await clients.s3
+    .send(new GetBucketTaggingCommand({ Bucket: frontendBucket }))
+    .then((r) => r.TagSet?.find((t) => t.Key === FRONTEND_ENV_TAG)?.Value)
+    .catch(() => undefined);
   const secrets = secretList.map((s) => s.Name!).filter(owned);
   const caches = cacheList.map((c) => c.ReplicationGroupId!).filter(owned);
 
@@ -353,6 +375,7 @@ export async function computePlan(
     secrets,
     caches,
     workers,
+    frontendEnvHash: liveFrontendEnvHash,
   });
 }
 
