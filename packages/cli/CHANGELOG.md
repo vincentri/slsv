@@ -1,5 +1,13 @@
 # @slsv/cli
 
+## 0.2.4
+
+### Patch Changes
+
+- 2585f79: chore: deslop passes 1-5 — dedup, pagination, lint fixes
+- Updated dependencies [2585f79]
+  - @slsv/sdk@0.2.4
+
 ## 0.2.3
 
 ### Patch Changes
