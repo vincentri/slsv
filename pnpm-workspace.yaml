@@ -1,10 +1,5 @@
 packages:
   - 'packages/*'
-  - 'examples/*'
-  - 'apps/*'
-
-minimumReleaseAgeExclude:
-  - adm-zip@0.6.0
 
 # pnpm 11 silently ignores onlyBuiltDependencies from a config file — the only
 # build-approval it honors from a file is dangerouslyAllowAllBuilds (esbuild's

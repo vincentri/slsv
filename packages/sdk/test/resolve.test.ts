@@ -4,6 +4,7 @@ import { resolve } from "../src/resolve.js";
 describe("resolve", () => {
   afterEach(() => {
     delete process.env.DATABASE_INVOICES;
+    delete process.env.DATABASE_MY_NAME;
     delete process.env.QUEUE_EMAIL_QUEUE;
   });
 
@@ -15,6 +16,11 @@ describe("resolve", () => {
   it("uppercases and replaces dashes", () => {
     process.env.QUEUE_EMAIL_QUEUE = "http://localhost:4566/q";
     expect(resolve("QUEUE", "email-queue")).toBe("http://localhost:4566/q");
+  });
+
+  it("handles dash->underscore + uppercase + prefix for 'my-name'", () => {
+    process.env.DATABASE_MY_NAME = "my-table";
+    expect(resolve("DATABASE", "my-name")).toBe("my-table");
   });
 
   it("throws a helpful error when the resource is not deployed", () => {

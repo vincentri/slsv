@@ -14,9 +14,10 @@ import { ACMClient } from "@aws-sdk/client-acm";
 import { ECSClient } from "@aws-sdk/client-ecs";
 import { ECRClient } from "@aws-sdk/client-ecr";
 import { EC2Client } from "@aws-sdk/client-ec2";
+import { FLOCI_ENDPOINT } from "./constants.js";
 
 const LOCAL_CFG = {
-  endpoint: "http://localhost:4566",
+  endpoint: FLOCI_ENDPOINT,
   region: "us-east-1",
   credentials: { accessKeyId: "test", secretAccessKey: "test" },
 };

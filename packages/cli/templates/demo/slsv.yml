@@ -59,7 +59,7 @@ buckets:
 caches:
   links:
     type: valkey
-    nodeType: cache.t4g.micro
+    # nodeType: cache.t4g.micro  # default; uncomment to override (--target aws only)
 
 secrets:
   - WEBHOOK_SECRET

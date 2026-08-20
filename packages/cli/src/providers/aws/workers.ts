@@ -28,8 +28,9 @@ import {
   DeleteSecurityGroupCommand,
 } from "@aws-sdk/client-ec2";
 import { envKey } from "../../env-key.js";
+import { sleep } from "../../utils/sleep.js";
 import { ConfigError, fargateDefaultMemory, type AppConfig } from "../../config.js";
-import { asTagArray } from "./tags.js";
+import { asEcsTags, asTagArray } from "./tags.js";
 
 // Every worker task in an app+stage shares one cluster; it holds no config and costs nothing.
 export const clusterName = (appName: string) => appName;
@@ -49,11 +50,6 @@ export type WorkerSpec = {
   securityGroups?: string[];
   assignPublicIp?: boolean;
 };
-
-// ECS is the odd one out: its Tag shape is lowercase {key,value}, not the {Key,Value} every
-// other service (and asTagArray) uses.
-const ecsTags = (tags: Record<string, string>) =>
-  Object.entries(tags).map(([key, value]) => ({ key, value }));
 
 const docker = (args: string[], cwd?: string) =>
   execFileSync("docker", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
@@ -114,7 +110,7 @@ export async function ensureWorkers(
 
   const cluster = clusterName(appName);
   await ecs.send(
-    new CreateClusterCommand({ clusterName: cluster, tags: ecsTags(tags) }),
+    new CreateClusterCommand({ clusterName: cluster, tags: asEcsTags(tags) }),
   );
 
   // Discovered once per deploy, and only if some worker needs it — Floci ignores networking, so
@@ -195,7 +191,7 @@ export async function ensureWorkers(
             // other way round, a user key could clobber BUCKET_*/AWS_ENDPOINT_URL and break the
             // worker in ways that only show up at runtime.
             environment: Object.entries({
-              ...(w.environment ?? {}),
+              ...(w.environment ?? undefined),
               ...envVars,
               SLSV_MAX_RUNTIME: String(w.maxRuntime ?? 3600),
             }).map(([n, value]) => ({ name: n, value })),
@@ -216,7 +212,7 @@ export async function ensureWorkers(
                 }),
           },
         ],
-        tags: ecsTags(tags),
+        tags: asEcsTags(tags),
       }),
     );
     console.log(`  ✓ worker ${family} (${cpu} cpu, ${arch})`);
@@ -405,7 +401,7 @@ export async function deleteWorkerSecurityGroup(ec2: EC2Client, appName: string)
       return;
     } catch (e) {
       if (!/DependencyViolation/i.test(String((e as Error).name)) || i === 11) throw e;
-      await new Promise((r) => setTimeout(r, 10_000));
+      await sleep(10_000);
     }
   }
 }

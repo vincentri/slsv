@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-sqs";
 import type { AppConfig } from "../../config.js";
 import { dlqName } from "../../config.js";
+import { isAlreadyExists } from "./errors.js";
 
 // createdAt: epoch seconds — lets the ESM wiring detect a recreated queue (see eventsource.ts).
 export type QueueOutput = { url: string; arn: string; createdAt?: number };
@@ -37,7 +38,7 @@ export async function ensureQueues(
     };
   }
   // Inject auto-provisioned DLQs that weren't explicitly declared.
-  for (const [name, q] of Object.entries(working)) {
+  for (const q of Object.values(working)) {
     if (q.dlqName && !working[q.dlqName]) working[q.dlqName] = { fifo: q.fifo };
   }
 
@@ -65,7 +66,7 @@ export async function ensureQueues(
       queueUrl = r.QueueUrl!;
     } catch (e) {
       // real AWS (JSON protocol) names it QueueNameExists; older XML/emulators QueueAlreadyExists
-      if (!/QueueNameExists|QueueAlreadyExists/i.test((e as Error).name)) throw e;
+      if (!isAlreadyExists(e)) throw e;
       const r = await sqs.send(new GetQueueUrlCommand({ QueueName: queueName }));
       queueUrl = r.QueueUrl!;
       await sqs.send(new SetQueueAttributesCommand({ QueueUrl: queueUrl, Attributes: mutable }));

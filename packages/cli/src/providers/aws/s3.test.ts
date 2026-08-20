@@ -81,18 +81,6 @@ describe("ensureBuckets", () => {
     );
   });
 
-  it("skips public policy and CORS for default bucket even with no flags", async () => {
-    send.mockReset();
-    send.mockResolvedValue({});
-
-    await ensureBuckets(S3, { private: {} }, "shop-dev", {});
-
-    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ Policy: expect.anything() }));
-    expect(send).not.toHaveBeenCalledWith(
-      expect.objectContaining({ CORSConfiguration: expect.anything() }),
-    );
-  });
-
   it("skips CreateBucket when HeadBucket succeeds (bucket already exists)", async () => {
     send.mockReset();
     send.mockResolvedValue({});

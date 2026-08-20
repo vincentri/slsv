@@ -14,9 +14,6 @@ importers:
       '@changesets/cli':
         specifier: ^2.31.1
         version: 2.31.1(@types/node@26.1.1)
-      commander:
-        specifier: ^15.0.0
-        version: 15.0.0
       oxfmt:
         specifier: ^0.59.0
         version: 0.59.0

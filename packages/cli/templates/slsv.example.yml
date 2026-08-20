@@ -2,8 +2,8 @@
 # All optional fields have sane defaults; minimal slsv.yml = just `app:` + one resource.
 #
 # Stages: `slsv deploy --stage prod` namespaces every resource as <app>-<stage>-<name>,
-# so dev/prod coexist. Per-stage secrets load from `.env.<stage>` (falls back to `.env`).
-# Default stage is `dev`. No per-stage yml block — same shape, different secrets/values.
+# so dev/prod coexist. Secrets/env load precedence: .env.local > .env.<stage> > .env
+# (.env.local only on --target local, never sent to cloud). Default stage is `dev`.
 
 app: my-app
 
@@ -224,7 +224,7 @@ workers:
     #                               # endpoints yourself). Ignored on --target local (Floci has no EC2).
 
 secrets:
-  # Names only. Values come from .env.<stage> (falls back to .env) and are stored in AWS
+  # Names only. Values come from .env.local > .env.<stage> > .env and are stored in AWS
   # Secrets Manager as <app>-<stage>-<NAME>. The VALUE is never put in the function env —
   # fetch it at runtime:  const jwt = await secret('JWT_SECRET')   (from '@slsv/sdk').
   # Per stage: .env = dev, .env.prod = prod, .env.staging = staging.
@@ -248,7 +248,7 @@ tags:
 
 frontend:
   src: ./frontend/dist # build output to serve
-  build: npm --prefix frontend install && npm --prefix frontend run build # build cmd
+  build: cd frontend && pnpm install && pnpm run build # pnpm — see AGENTS.md "pnpm-only"
   # cloudfront: true                  # aws-only. Serves the frontend + /api/* under one
   # HTTPS *.cloudfront.net domain (S3 website endpoints
   # are HTTP-only). Skips the VITE_SLSV_API_URL injection

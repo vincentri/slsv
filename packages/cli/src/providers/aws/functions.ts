@@ -13,8 +13,12 @@ import {
   ListVersionsByFunctionCommand,
   DeleteFunctionCommand,
 } from "@aws-sdk/client-lambda";
+import { DEFAULTS } from "../../config.js";
 import type { AppConfig } from "../../config.js";
+import { sleep } from "../../utils/sleep.js";
 import { bundleHandler } from "../../bundle.js";
+import { isGone } from "./errors.js";
+import { pMap as mapLimit } from "../../utils/pMap.js";
 
 export type AwsFnOutput = { arn: string; name: string };
 
@@ -29,29 +33,9 @@ async function withRoleRetry<T>(fn: () => Promise<T>, attempts = 6, delayMs = 20
       const assumeError =
         e?.name === "InvalidParameterValueException" && /assume|role/i.test(e?.message ?? "");
       if (!assumeError || i >= attempts - 1) throw e;
-      await new Promise((r) => setTimeout(r, delayMs));
+      await sleep(delayMs);
     }
   }
-}
-
-// Bounded-concurrency map: run `worker` over `items` with at most `limit` in flight.
-// ponytail: inline pool, no p-limit dep. limit=8 stays well under Lambda's API rate; raise
-// if deploys of huge apps still bottleneck (or drop to a real limiter if backpressure matters).
-async function mapLimit<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  let next = 0;
-  async function run(): Promise<void> {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await worker(items[i]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
-  return results;
 }
 
 export async function deployFunctions(
@@ -81,8 +65,8 @@ export async function deployFunctions(
     const environment = {
       Variables: { ...fn.environment, ...envVars, ...overrides },
     };
-    const timeout = fn.timeout ?? 30;
-    const memory = fn.memory ?? 256;
+    const timeout = fn.timeout ?? DEFAULTS.timeout;
+    const memory = fn.memory ?? DEFAULTS.memory;
     const ephemeralStorage = fn.ephemeralStorage ? { Size: fn.ephemeralStorage } : undefined;
     const tracingConfig = fn.tracing ? { Mode: "Active" as const } : undefined;
 
@@ -109,7 +93,7 @@ export async function deployFunctions(
       );
       fnArn = existing.Configuration!.FunctionArn!;
     } catch (e: any) {
-      if (e.name !== "ResourceNotFoundException") throw e;
+      if (!isGone(e)) throw e;
       const create = new CreateFunctionCommand({
         FunctionName: fnName,
         Runtime: `${fn.runtime}.x`, // honor the yml `runtime` (was hardcoded nodejs22.x, ignoring the field)
@@ -119,7 +103,7 @@ export async function deployFunctions(
         Environment: environment,
         Timeout: timeout,
         MemorySize: memory,
-        Architectures: [fn.architecture ?? "arm64"],
+        Architectures: [fn.architecture ?? DEFAULTS.arch],
         EphemeralStorage: ephemeralStorage,
         TracingConfig: tracingConfig,
         Tags: tags,

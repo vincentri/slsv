@@ -9,6 +9,7 @@ import {
   DeleteRoleCommand,
 } from "@aws-sdk/client-iam";
 import { asTagArray } from "./tags.js";
+import { isAlreadyExists } from "./errors.js";
 
 const BASIC_EXEC_ARN = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole";
 
@@ -145,7 +146,7 @@ export async function ensureExecRole(
     );
     arn = r.Role!.Arn!;
   } catch (e) {
-    if (errName(e) !== "EntityAlreadyExistsException") throw e;
+    if (!isAlreadyExists(e)) throw e;
     const r = await iam.send(new GetRoleCommand({ RoleName: roleName }));
     arn = r.Role!.Arn!;
   }
@@ -153,7 +154,7 @@ export async function ensureExecRole(
   try {
     await iam.send(new AttachRolePolicyCommand({ RoleName: roleName, PolicyArn: BASIC_EXEC_ARN }));
   } catch (e) {
-    if (errName(e) !== "EntityAlreadyExistsException") throw e;
+    if (!isAlreadyExists(e)) throw e;
   }
 
   // Inline data policy — idempotent (PutRolePolicy overwrites by name).

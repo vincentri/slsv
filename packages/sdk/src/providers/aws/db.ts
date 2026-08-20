@@ -10,6 +10,7 @@ import {
   BatchWriteCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { chunk } from "../../utils/chunk.js";
 import type { DbClient, Item, Key, QueryOptions } from "../../types.js";
 
 // AWS_ENDPOINT_URL (injected by slsv) makes this hit Floci locally and
@@ -93,11 +94,10 @@ export function makeDb(tableName: string): DbClient {
     async batchPut(items: Item[]) {
       if (!items.length) return;
       // DynamoDB batch limit is 25/request
-      for (let i = 0; i < items.length; i += 25) {
-        const chunk = items.slice(i, i + 25);
+      for (const c of chunk(items, 25)) {
         await doc.send(
           new BatchWriteCommand({
-            RequestItems: { [tableName]: chunk.map((Item) => ({ PutRequest: { Item } })) },
+            RequestItems: { [tableName]: c.map((Item) => ({ PutRequest: { Item } })) },
           }),
         );
       }

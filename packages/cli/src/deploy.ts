@@ -3,6 +3,7 @@ import type { AwsProvider } from "./providers/aws/index.js";
 import { config as dotenv } from "dotenv";
 import { slsvTags } from "./providers/aws/tags.js";
 import { lintApp } from "./lint.js";
+import { appStagePrefix } from "./utils/names.js";
 import path from "path";
 
 export type DeployOutputs = {
@@ -47,7 +48,7 @@ export async function deploy(
 ): Promise<DeployOutputs> {
   loadEnv(cwd, stage, provider.target);
   // Every resource is namespaced by stage so dev/prod stacks coexist in one account.
-  const prefix = `${cfg.app}-${stage}`;
+  const prefix = appStagePrefix(cfg.app, stage);
   console.log(`\nDeploying ${cfg.app} (stage: ${stage})...`);
 
   // Preflight: fail fast if slsv.yml doesn't match the code (missing handler/export, an SDK
@@ -63,7 +64,7 @@ export async function deploy(
     const tags = slsvTags(cfg.app, stage, cfg.tags);
     await provider.setup(prefix, Object.keys(functions), tags, cfg.logRetentionDays ?? 14);
 
-    if (hasResources(cfg)) console.log("→ Storage, messaging & caches");
+    if (hasBackend) console.log("→ Storage, messaging & caches");
     const [bucketEnvs, queueEnvs, secretEnvs, cacheEnvs, dbEnvs] = await Promise.all([
       provider.ensureBuckets(cfg.buckets, prefix),
       provider.ensureQueues(cfg.queues, prefix),

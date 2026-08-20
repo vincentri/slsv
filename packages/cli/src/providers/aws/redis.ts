@@ -9,6 +9,8 @@ import {
 } from "@aws-sdk/client-elasticache";
 import { execFileSync } from "node:child_process";
 import { envKey } from "../../env-key.js";
+import { sleep } from "../../utils/sleep.js";
+import { pollUntil } from "../../utils/poll.js";
 import { asTagArray } from "./tags.js";
 import type { AppConfig } from "../../config.js";
 
@@ -155,7 +157,7 @@ async function waitForDockerIp(clusterId: string, maxMs = 30_000): Promise<strin
   while (Date.now() - start < maxMs) {
     const ip = dockerContainerIp(clusterId);
     if (ip) return ip;
-    await new Promise((r) => setTimeout(r, 1_000));
+    await sleep(1_000);
   }
   throw new Error(
     `caches: valkey container floci-valkey-${clusterId} never came up (${Math.round(
@@ -174,25 +176,29 @@ async function waitForCacheEndpoint(
 ): Promise<{ address: string; port: number }> {
   const start = Date.now();
   let lastStatus = "";
-  while (Date.now() - start < maxMs) {
-    await new Promise((r) => setTimeout(r, 10_000));
-    const r = await client
-      .send(new DescribeReplicationGroupsCommand({ ReplicationGroupId: clusterId }))
-      .catch(() => null);
-    const rg = r?.ReplicationGroups?.[0];
-    const status = rg?.Status ?? "unknown";
-    const mins = Math.round((Date.now() - start) / 60_000);
-    if (status !== lastStatus) {
-      console.log(`    ${clusterId}: ${status} (${mins}m elapsed)`);
-      lastStatus = status;
-    }
-    const ep = rg ? extractEndpoint(rg) : undefined;
-    if (ep) return ep;
+  try {
+    return await pollUntil(
+      async () => {
+        const r = await client
+          .send(new DescribeReplicationGroupsCommand({ ReplicationGroupId: clusterId }))
+          .catch(() => null);
+        const rg = r?.ReplicationGroups?.[0];
+        const status = rg?.Status ?? "unknown";
+        const mins = Math.round((Date.now() - start) / 60_000);
+        if (status !== lastStatus) {
+          console.log(`    ${clusterId}: ${status} (${mins}m elapsed)`);
+          lastStatus = status;
+        }
+        return rg ? extractEndpoint(rg) : undefined;
+      },
+      { interval: 10_000, timeout: maxMs },
+    );
+  } catch {
+    throw new Error(
+      `caches: ${clusterId} not available after ${Math.round(maxMs / 60_000)}m (last status: ${lastStatus}). ` +
+        `ElastiCache can be slow; re-run deploy to resume, or check the AWS console.`,
+    );
   }
-  throw new Error(
-    `caches: ${clusterId} not available after ${Math.round(maxMs / 60_000)}m (last status: ${lastStatus}). ` +
-      `ElastiCache can be slow; re-run deploy to resume, or check the AWS console.`,
-  );
 }
 
 async function describeEndpoint(client: ElastiCacheClient, clusterId: string) {
@@ -273,24 +279,28 @@ async function waitForServerlessEndpoint(
 ): Promise<CacheEndpoint> {
   const start = Date.now();
   let lastStatus = "";
-  while (Date.now() - start < maxMs) {
-    await new Promise((r) => setTimeout(r, 10_000));
-    const r = await client
-      .send(new DescribeServerlessCachesCommand({ ServerlessCacheName: cacheName }))
-      .catch(() => null);
-    const sc = r?.ServerlessCaches?.[0];
-    const status = sc?.Status ?? "unknown";
-    if (status !== lastStatus) {
-      console.log(
-        `    ${cacheName}: ${status} (${Math.round((Date.now() - start) / 60_000)}m elapsed)`,
-      );
-      lastStatus = status;
-    }
-    const ep = sc ? extractServerlessEndpoint(sc) : undefined;
-    if (ep) return ep;
+  try {
+    return await pollUntil(
+      async () => {
+        const r = await client
+          .send(new DescribeServerlessCachesCommand({ ServerlessCacheName: cacheName }))
+          .catch(() => null);
+        const sc = r?.ServerlessCaches?.[0];
+        const status = sc?.Status ?? "unknown";
+        if (status !== lastStatus) {
+          console.log(
+            `    ${cacheName}: ${status} (${Math.round((Date.now() - start) / 60_000)}m elapsed)`,
+          );
+          lastStatus = status;
+        }
+        return sc ? extractServerlessEndpoint(sc) : undefined;
+      },
+      { interval: 10_000, timeout: maxMs },
+    );
+  } catch {
+    throw new Error(
+      `caches: ${cacheName} not available after ${Math.round(maxMs / 60_000)}m (last status: ${lastStatus}). ` +
+        `Re-run deploy to resume.`,
+    );
   }
-  throw new Error(
-    `caches: ${cacheName} not available after ${Math.round(maxMs / 60_000)}m (last status: ${lastStatus}). ` +
-      `Re-run deploy to resume.`,
-  );
 }

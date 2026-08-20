@@ -1,13 +1,9 @@
 import {
   S3Client,
-  CreateBucketCommand,
-  HeadBucketCommand,
   PutBucketWebsiteCommand,
-  PutBucketPolicyCommand,
-  PutPublicAccessBlockCommand,
   PutObjectCommand,
-  PutBucketTaggingCommand,
 } from "@aws-sdk/client-s3";
+import { ensureBucketExists } from "./s3.js";
 import {
   CloudFrontClient,
   ListDistributionsCommand,
@@ -136,44 +132,7 @@ export async function deployFrontendAws(
   // instead of pointing the build at the API Gateway domain directly.
   runBuild(frontend, cwd, useCloudfront ? undefined : apiUrl);
 
-  try {
-    await s3.send(new HeadBucketCommand({ Bucket: bucket }));
-  } catch {
-    await s3.send(new CreateBucketCommand({ Bucket: bucket }));
-  }
-
-  await s3.send(
-    new PutBucketTaggingCommand({ Bucket: bucket, Tagging: { TagSet: asTagArray(tags) } }),
-  );
-
-  await s3.send(
-    new PutPublicAccessBlockCommand({
-      Bucket: bucket,
-      PublicAccessBlockConfiguration: {
-        BlockPublicAcls: false,
-        IgnorePublicAcls: false,
-        BlockPublicPolicy: false,
-        RestrictPublicBuckets: false,
-      },
-    }),
-  );
-
-  await s3.send(
-    new PutBucketPolicyCommand({
-      Bucket: bucket,
-      Policy: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Effect: "Allow",
-            Principal: "*",
-            Action: "s3:GetObject",
-            Resource: `arn:aws:s3:::${bucket}/*`,
-          },
-        ],
-      }),
-    }),
-  );
+  await ensureBucketExists(s3, bucket, tags, { publicRead: true });
 
   await s3.send(
     new PutBucketWebsiteCommand({

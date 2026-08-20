@@ -6,6 +6,7 @@ import {
   DeleteLogGroupCommand,
   DescribeLogGroupsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
+import { isAlreadyExists, isGone } from "./errors.js";
 
 export async function ensureLogGroup(
   logs: CloudWatchLogsClient,
@@ -16,7 +17,7 @@ export async function ensureLogGroup(
   try {
     await logs.send(new CreateLogGroupCommand({ logGroupName }));
   } catch (e: any) {
-    if (e.name !== "ResourceAlreadyExistsException") throw e;
+    if (!isAlreadyExists(e)) throw e;
   }
   // Applied on every deploy so a changed value takes effect. 0 = never expire (clear policy).
   if (retentionDays > 0) {
@@ -55,6 +56,6 @@ export async function deleteLogGroup(logs: CloudWatchLogsClient, fnName: string)
   await logs
     .send(new DeleteLogGroupCommand({ logGroupName: `/aws/lambda/${fnName}` }))
     .catch((e: any) => {
-      if (e.name !== "ResourceNotFoundException") throw e;
+      if (!isGone(e)) throw e;
     });
 }

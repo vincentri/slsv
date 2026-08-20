@@ -26,8 +26,8 @@ slsv dev   # Floci up → deploy → watch for changes
 
 ## Requirements
 
-- Node 20+
-- pnpm 9+
+- Node 22+
+- pnpm 11+
 - Docker (for Floci)
 
 ---

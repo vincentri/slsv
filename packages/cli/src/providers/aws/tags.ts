@@ -16,3 +16,7 @@ export function slsvTags(
 // Most AWS APIs want [{Key,Value}]; Lambda/SQS want the plain {k:v} map (use the Record directly).
 export const asTagArray = (tags: Record<string, string>) =>
   Object.entries(tags).map(([Key, Value]) => ({ Key, Value }));
+
+// ECS is the odd one out: its Tag shape is lowercase {key,value}.
+export const asEcsTags = (tags: Record<string, string>) =>
+  asTagArray(tags).map(({ Key, Value }) => ({ key: Key, value: Value }));

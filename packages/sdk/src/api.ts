@@ -70,31 +70,11 @@ function route<TBody = unknown>(
     : { method, path, handler: a as ApiHandler<TBody> };
 }
 
-export const get = <TBody = unknown>(
-  path: string,
-  a: ApiHandler<TBody> | RouteOptions<TBody>,
-  b?: ApiHandler<TBody>,
-) => route("GET", path, a, b);
-export const post = <TBody = unknown>(
-  path: string,
-  a: ApiHandler<TBody> | RouteOptions<TBody>,
-  b?: ApiHandler<TBody>,
-) => route("POST", path, a, b);
-export const put = <TBody = unknown>(
-  path: string,
-  a: ApiHandler<TBody> | RouteOptions<TBody>,
-  b?: ApiHandler<TBody>,
-) => route("PUT", path, a, b);
-export const patch = <TBody = unknown>(
-  path: string,
-  a: ApiHandler<TBody> | RouteOptions<TBody>,
-  b?: ApiHandler<TBody>,
-) => route("PATCH", path, a, b);
-export const del = <TBody = unknown>(
-  path: string,
-  a: ApiHandler<TBody> | RouteOptions<TBody>,
-  b?: ApiHandler<TBody>,
-) => route("DELETE", path, a, b);
+export const get = <TBody = unknown>(...args: [string, ApiHandler<TBody> | RouteOptions<TBody>, ApiHandler<TBody>?]) => route<TBody>("GET", ...args);
+export const post = <TBody = unknown>(...args: [string, ApiHandler<TBody> | RouteOptions<TBody>, ApiHandler<TBody>?]) => route<TBody>("POST", ...args);
+export const put = <TBody = unknown>(...args: [string, ApiHandler<TBody> | RouteOptions<TBody>, ApiHandler<TBody>?]) => route<TBody>("PUT", ...args);
+export const patch = <TBody = unknown>(...args: [string, ApiHandler<TBody> | RouteOptions<TBody>, ApiHandler<TBody>?]) => route<TBody>("PATCH", ...args);
+export const del = <TBody = unknown>(...args: [string, ApiHandler<TBody> | RouteOptions<TBody>, ApiHandler<TBody>?]) => route<TBody>("DELETE", ...args);
 
 // Prefix every route's path with a basePath, and optionally prepend shared middleware to the
 // whole group. Compose feature folders by spreading into router():
@@ -108,25 +88,21 @@ export function group(prefix: string, routes: Route[], middleware: Middleware[] 
   }));
 }
 
-// slsv mounts a function under a catch-all `path: /<prefix>/{proxy+}`, so API Gateway hands us
-// the sub-path below the mount in pathParameters.proxy (e.g. `/v1/{proxy+}` + request /v1/health
-// → proxy = "health"). Prefer it: routes are written relative to the mount and the prefix lives
-// ONLY in slsv.yml — change the mount, routes inherit it, no file edits. Apps using explicit
-// per-route `http:` entries have no proxy param → full-path match, unchanged.
-// ponytail: keyed on the literal name `proxy` (slsv's `{proxy+}` convention). An explicit route
-// that names a param `{proxy}` would also trip it — rename the catch-all if that ever collides.
-function eventPath(event: LambdaEvent): string {
+function parseEvent(event: LambdaEvent): { path: string; method: string } {
   const proxy = event.pathParameters?.proxy;
-  if (proxy != null) return "/" + proxy;
-  return event.rawPath ?? event.path ?? event.requestContext?.http?.path ?? "/";
+  // slsv mounts a function under `path: /<prefix>/{proxy+}` — prefer pathParameters.proxy
+  // (routes stay prefix-free; explicit per-route http: entries have no proxy → full match).
+  // ponytail: keyed on literal `proxy` ({proxy+} convention); a route param named {proxy} collides.
+  const path = proxy != null ? "/" + proxy : (event.rawPath ?? event.path ?? event.requestContext?.http?.path ?? "/");
+  const method = (event.requestContext?.http?.method ?? event.httpMethod ?? "GET").toUpperCase();
+  return { path, method };
 }
 
 export function request<TBody = unknown>(
   event: LambdaEvent,
   routePath?: string,
 ): ApiRequest<TBody> {
-  const path = eventPath(event);
-  const method = (event.requestContext?.http?.method ?? event.httpMethod ?? "GET").toUpperCase();
+  const { path, method } = parseEvent(event);
   const headers = normalizeHeaders(event.headers);
   const rawBody = decodeBody(event);
 
@@ -144,12 +120,11 @@ export function request<TBody = unknown>(
 
 export function router(routes: Route[], middleware: Middleware[] = []) {
   return async (event: LambdaEvent): Promise<ApiResponse> => {
-    const path = eventPath(event);
-    const method = (event.requestContext?.http?.method ?? event.httpMethod ?? "GET").toUpperCase();
+    const { path, method } = parseEvent(event);
 
     for (const route of routes) {
       if (!methodMatches(route.method, method)) continue;
-      if (!matchesPath(route.path, path)) continue;
+      if (matchPath(route.path, path) === undefined) continue;
 
       try {
         // ponytail: request() parses the body eagerly, so bad JSON → 400 before middleware
@@ -263,10 +238,6 @@ function parseJsonBody<TBody>(rawBody: string | undefined): TBody | undefined {
 function methodMatches(routeMethod: string | undefined, method: string) {
   const expected = (routeMethod ?? "ANY").toUpperCase();
   return expected === "ANY" || expected === method;
-}
-
-function matchesPath(pattern: string, path: string) {
-  return matchPath(pattern, path) !== undefined;
 }
 
 function matchPath(pattern: string, path: string): Record<string, string> | undefined {

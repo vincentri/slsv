@@ -10,10 +10,11 @@ import { ListSecretsCommand } from "@aws-sdk/client-secrets-manager";
 import { DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 import { DescribeReplicationGroupsCommand } from "@aws-sdk/client-elasticache";
 import type { AppConfig } from "../../config.js";
-import { dlqName } from "../../config.js";
+import { DEFAULTS, dlqName } from "../../config.js";
 import type { Clients } from "./clients.js";
 import { listWorkerFamilies } from "./workers.js";
 import { paginate } from "./index.js";
+import { appStagePrefix, frontendBucketName } from "../../utils/names.js";
 
 // `slsv plan`: two-way diff (yml desired vs AWS actual — slsv keeps no state file). Read-only;
 // classifies each resource as create / update (a mutable field differs) / replace (an IMMUTABLE
@@ -57,15 +58,7 @@ export interface LiveState {
   workers: string[]; // task-definition family names
 }
 
-const DEFAULTS = {
-  memory: 256,
-  timeout: 30,
-  ephemeral: 512,
-  arch: "arm64",
-  instanceClass: "db.t3.micro",
-  storage: 20,
-  multiAz: false,
-};
+
 
 // What a deploy does with a live resource that's no longer in the yml:
 //   "prune" — always deleted on deploy (Lambda). Non-destructive (stateless).
@@ -80,7 +73,7 @@ export function classify(
   live: LiveState,
   autoRemove = cfg.autoRemove ?? false,
 ): PlanResult {
-  const pfx = `${cfg.app}-${stage}-`;
+  const pfx = `${appStagePrefix(cfg.app, stage)}-`;
   const lcPfx = pfx.toLowerCase();
   const changes: Change[] = [];
 
@@ -265,10 +258,10 @@ export async function computePlan(
   cfg: AppConfig,
   stage: string,
 ): Promise<PlanResult> {
-  const pfx = `${cfg.app}-${stage}-`;
+  const pfx = `${appStagePrefix(cfg.app, stage)}-`;
   const lcPfx = pfx.toLowerCase();
   const owned = (n?: string): n is string => !!n && n.startsWith(pfx);
-  const frontendBucket = `${lcPfx}frontend`;
+  const frontendBucket = frontendBucketName(appStagePrefix(cfg.app, stage));
 
   const [fnList, tableNames, dbList, bucketList, queueUrls, secretList, cacheList, workers] =
     await Promise.all([
@@ -287,7 +280,11 @@ export async function computePlan(
           .send(new DescribeDBInstancesCommand({ Marker }))
           .then((r) => ({ items: r.DBInstances ?? [], next: r.Marker })),
       ),
-      clients.s3.send(new ListBucketsCommand({})).then((r) => r.Buckets ?? []),
+      paginate((ContinuationToken) =>
+        clients.s3
+          .send(new ListBucketsCommand({ ContinuationToken }))
+          .then((r) => ({ items: r.Buckets ?? [], next: r.ContinuationToken })),
+      ),
       paginate((NextToken) =>
         clients.sqs
           .send(new ListQueuesCommand({ QueueNamePrefix: pfx, NextToken }))
@@ -298,10 +295,11 @@ export async function computePlan(
           .send(new ListSecretsCommand({ NextToken }))
           .then((r) => ({ items: r.SecretList ?? [], next: r.NextToken })),
       ),
-      clients.elasticache
-        .send(new DescribeReplicationGroupsCommand({}))
-        .then((r) => r.ReplicationGroups ?? [])
-        .catch(() => []),
+      paginate((Marker) =>
+        clients.elasticache
+          .send(new DescribeReplicationGroupsCommand({ Marker }))
+          .then((r) => ({ items: r.ReplicationGroups ?? [], next: r.Marker })),
+      ).catch(() => []),
       listWorkerFamilies(clients.ecs, pfx).catch(() => [] as string[]),
     ]);
 

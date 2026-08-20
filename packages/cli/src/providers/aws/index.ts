@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { envKey } from "../../env-key.js";
 import type { AppConfig } from "../../config.js";
 import { makeClients, type Clients } from "./clients.js";
+import { appStagePrefix, frontendBucketName } from "../../utils/names.js";
+import { FLOCI_ENDPOINT, LAMBDA_LOCAL_ENDPOINT, rewriteForLambdaEnv } from "./constants.js";
 
 export type FunctionOutput = { name: string; arn: string };
 import { ensureExecRole, deleteExecRole } from "./iam.js";
@@ -59,9 +61,7 @@ import {
 } from "@aws-sdk/client-elasticache";
 import { DeleteDBInstanceCommand, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 
-// A Lambda runs INSIDE the Floci container, where `localhost` is the container itself.
-// It must reach Floci's AWS APIs via the docker host (same trick as the redis endpoint).
-const LAMBDA_LOCAL_ENDPOINT = "http://host.docker.internal:4566";
+
 
 // ponytail: Docker CLI + floci-<prefix><fn> naming; drop once Floci stops the container
 // on DeleteFunction.
@@ -116,7 +116,7 @@ export class AwsProvider {
   // ponytail: still left behind — dangling API-GW integrations, SQS event-source-mappings; inert,
   // re-created on next deploy. Add cleanup if Floci clutter ever matters.
   async destroyResources(cfg: AppConfig, stage: string) {
-    const appName = `${cfg.app}-${stage}`;
+    const appName = appStagePrefix(cfg.app, stage);
     console.log(`\n→ Destroy ${appName} (target ${this.target})`);
 
     // Each delete is its own step: logs progress like deploy, treats an already-gone resource
@@ -212,8 +212,12 @@ export class AwsProvider {
 
     // S3 (empty first, AWS refuses non-empty delete). Prefix discovery catches the frontend
     // hosting bucket too (created by deployFrontend, not declared under `buckets:`).
-    const s3 = await this.clients.s3.send(new ListBucketsCommand({}));
-    for (const b of s3.Buckets ?? [])
+    const allBuckets = await paginate((ContinuationToken) =>
+      this.clients.s3
+        .send(new ListBucketsCommand({ ContinuationToken }))
+        .then((r) => ({ items: r.Buckets ?? [], next: r.ContinuationToken })),
+    );
+    for (const b of allBuckets)
       if (b.Name?.startsWith(lcPfx))
         await step(`S3 ${b.Name}`, () => this.emptyAndDeleteBucket(b.Name!).then(() => undefined));
 
@@ -245,10 +249,12 @@ export class AwsProvider {
     // ElastiCache — node groups (DescribeReplicationGroups) and serverless caches
     // (DescribeServerlessCaches) are separate APIs; sweep both by id prefix so we don't need the
     // yml's serverless flag.
-    const rgs = await this.clients.elasticache
-      .send(new DescribeReplicationGroupsCommand({}))
-      .catch(() => null);
-    for (const g of rgs?.ReplicationGroups ?? [])
+    const rgs = await paginate((Marker) =>
+      this.clients.elasticache
+        .send(new DescribeReplicationGroupsCommand({ Marker }))
+        .then((r) => ({ items: r.ReplicationGroups ?? [], next: r.Marker })),
+    ).catch(() => []);
+    for (const g of rgs)
       if (g.ReplicationGroupId?.startsWith(pfx))
         await step(`Cache ${g.ReplicationGroupId}`, () =>
           this.clients.elasticache
@@ -256,10 +262,12 @@ export class AwsProvider {
             .then(() => undefined),
         );
     if (this.target === "aws") {
-      const scs = await this.clients.elasticache
-        .send(new DescribeServerlessCachesCommand({}))
-        .catch(() => null);
-      for (const c of scs?.ServerlessCaches ?? [])
+      const scs = await paginate((NextToken) =>
+        this.clients.elasticache
+          .send(new DescribeServerlessCachesCommand({ NextToken }))
+          .then((r) => ({ items: r.ServerlessCaches ?? [], next: r.NextToken })),
+      ).catch(() => []);
+      for (const c of scs)
         if (c.ServerlessCacheName?.startsWith(pfx))
           await step(`Cache ${c.ServerlessCacheName}`, () =>
             this.clients.elasticache
@@ -386,18 +394,26 @@ export class AwsProvider {
 
   // Empty + delete an S3 bucket (AWS refuses a non-empty delete). Idempotent: an already-gone
   // bucket is treated as success. Shared by destroy and reconcile's frontend teardown.
-  // ponytail: ListObjectsV2 returns one page (≤1000 keys) — fine for the frontend build + small
-  // buckets; page the listing if a bucket ever holds more.
   private async emptyAndDeleteBucket(bucket: string) {
     try {
-      const listed = await this.clients.s3.send(new ListObjectsV2Command({ Bucket: bucket }));
-      if (listed.Contents?.length)
-        await this.clients.s3.send(
-          new DeleteObjectsCommand({
-            Bucket: bucket,
-            Delete: { Objects: listed.Contents.map((o) => ({ Key: o.Key! })) },
-          }),
+      let token: string | undefined;
+      do {
+        const listed = await this.clients.s3.send(
+          new ListObjectsV2Command({ Bucket: bucket, ContinuationToken: token }),
         );
+        if (listed.Contents?.length) {
+          for (let i = 0; i < listed.Contents.length; i += 1000) {
+            const batch = listed.Contents.slice(i, i + 1000);
+            await this.clients.s3.send(
+              new DeleteObjectsCommand({
+                Bucket: bucket,
+                Delete: { Objects: batch.map((o) => ({ Key: o.Key! })) },
+              }),
+            );
+          }
+        }
+        token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+      } while (token);
       await this.clients.s3.send(new DeleteBucketCommand({ Bucket: bucket }));
       return true;
     } catch (e: any) {
@@ -422,7 +438,7 @@ export class AwsProvider {
   }
 
   async reconcile(cfg: AppConfig, stage: string) {
-    const prefix = `${cfg.app}-${stage}-`;
+    const prefix = `${appStagePrefix(cfg.app, stage)}-`;
     const owned = (n?: string): n is string => !!n && n.startsWith(prefix);
     const logical = (n: string) => n.slice(prefix.length);
 
@@ -515,7 +531,7 @@ export class AwsProvider {
     for (const family of await listWorkerFamilies(this.clients.ecs, prefix)) {
       if (wantWorkers.has(logical(family))) continue;
       try {
-        await destroyWorkerFamily(this.clients.ecs, clusterName(`${cfg.app}-${stage}`), family);
+        await destroyWorkerFamily(this.clients.ecs, clusterName(appStagePrefix(cfg.app, stage)), family);
         await deleteWorkerRepo(this.clients.ecr, family.toLowerCase()).catch((e) => {
           if (!GONE.test(String(e?.name ?? e))) throw e;
         });
@@ -573,7 +589,7 @@ export class AwsProvider {
     // (report-only), dropping `frontend:` from the yml TEARS THEM DOWN here, like a stateless
     // Lambda/EventBridge orphan. While a frontend IS configured they're excluded from the
     // orphan scan below (slsv owns them).
-    const frontendBucket = `${lcPrefix}frontend`;
+    const frontendBucket = frontendBucketName(appStagePrefix(cfg.app, stage));
     if (!cfg.frontend) {
       // Best-effort: a stray/cross-account/permission-denied leftover bucket must NOT abort an
       // already-successful deploy. Warn + continue (surfaced, not silent); `slsv destroy` / a
@@ -589,13 +605,17 @@ export class AwsProvider {
       await destroyDistribution(
         this.clients.cloudfront,
         this.clients.acmUsEast1,
-        `${cfg.app}-${stage}`,
+        appStagePrefix(cfg.app, stage),
       ).catch((e) => {
         if (!GONE.test(e?.name ?? "")) throw e;
       });
     }
-    const buckets = await this.clients.s3.send(new ListBucketsCommand({}));
-    for (const b of buckets.Buckets ?? [])
+    const allReconcileBuckets = await paginate((ContinuationToken) =>
+      this.clients.s3
+        .send(new ListBucketsCommand({ ContinuationToken }))
+        .then((r) => ({ items: r.Buckets ?? [], next: r.ContinuationToken })),
+    );
+    for (const b of allReconcileBuckets)
       if (
         b.Name?.startsWith(lcPrefix) &&
         b.Name !== frontendBucket &&
@@ -698,17 +718,7 @@ export class AwsProvider {
     cwd: string,
     envVars: Record<string, string>,
   ): Promise<Record<string, string>> {
-    // Same rewrite functions get: Floci hands back `localhost:4566` URLs, which point at the
-    // container itself once the task is running inside Floci's network.
-    const localized =
-      this.target === "local"
-        ? Object.fromEntries(
-            Object.entries(envVars).map(([k, v]) => [
-              k,
-              v.replaceAll("localhost:4566", "host.docker.internal:4566"),
-            ]),
-          )
-        : envVars;
+    const localized = this.target === "local" ? rewriteForLambdaEnv(envVars) : envVars;
     return ensureWorkers(
       this.clients.ecs,
       this.clients.ecr,
@@ -795,18 +805,7 @@ export class AwsProvider {
     envVars: Record<string, string>,
     cwd: string,
   ): Promise<Record<string, FunctionOutput>> {
-    // Injected URLs (e.g. a QUEUE_<NAME> QueueUrl) come back from Floci with a `localhost`
-    // host — unreachable from inside the Lambda container. Rewrite to the docker host, same
-    // as AWS_ENDPOINT_URL. SQS uses the QueueUrl's host directly, ignoring AWS_ENDPOINT_URL.
-    const localizedEnv =
-      this.target === "local"
-        ? Object.fromEntries(
-            Object.entries(envVars).map(([k, v]) => [
-              k,
-              v.replaceAll("localhost:4566", "host.docker.internal:4566"),
-            ]),
-          )
-        : envVars;
+    const localizedEnv = this.target === "local" ? rewriteForLambdaEnv(envVars) : envVars;
 
     const outputs = await deployFunctions(
       this.clients.lambda,
@@ -949,11 +948,9 @@ export class AwsProvider {
 
 async function ensureFlociAvailable() {
   try {
-    const res = await fetch("http://localhost:4566/");
+    const res = await fetch(`${FLOCI_ENDPOINT}/`);
     if (!res.ok) throw new Error(String(res.status));
   } catch {
-    throw new Error(
-      "Floci is not reachable at http://localhost:4566. Start Floci before running slsv.",
-    );
+    throw new Error(`Floci is not reachable at ${FLOCI_ENDPOINT}. Start Floci before running slsv.`);
   }
 }

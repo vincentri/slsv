@@ -5,6 +5,7 @@ import {
   ReceiveMessageCommand,
   DeleteMessageCommand,
 } from "@aws-sdk/client-sqs";
+import { chunk, stringifyBody } from "../../utils/chunk.js";
 import type { QueueClient, ReceivedMessage } from "../../types.js";
 
 const sqs = new SQSClient({});
@@ -15,7 +16,7 @@ export function makeQueue(queueUrl: string): QueueClient {
       await sqs.send(
         new SendMessageCommand({
           QueueUrl: queueUrl,
-          MessageBody: typeof body === "string" ? body : JSON.stringify(body),
+          MessageBody: stringifyBody(body),
           // ponytail: standard queues only — FIFO rejects per-message DelaySeconds
           // (delay must be configured on the queue itself).
           ...(opts.delaySeconds !== undefined ? { DelaySeconds: opts.delaySeconds } : {}),
@@ -24,17 +25,18 @@ export function makeQueue(queueUrl: string): QueueClient {
     },
 
     async sendBatch(bodies: any[]) {
-      for (let i = 0; i < bodies.length; i += 10) {
-        const chunk = bodies.slice(i, i + 10);
+      let off = 0;
+      for (const c of chunk(bodies, 10)) {
         await sqs.send(
           new SendMessageBatchCommand({
             QueueUrl: queueUrl,
-            Entries: chunk.map((b, idx) => ({
-              Id: String(i + idx),
-              MessageBody: typeof b === "string" ? b : JSON.stringify(b),
+            Entries: c.map((b, idx) => ({
+              Id: String(off + idx),
+              MessageBody: stringifyBody(b),
             })),
           }),
         );
+        off += c.length;
       }
     },
 

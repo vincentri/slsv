@@ -1,5 +1,5 @@
 {
-  "$schema": "https://typedoc-plugin-markdown.org/plugins/typedoc-plugin-markdown",
+  "$schema": "https://typedoc.org/schema.json",
   "entryPoints": ["packages/sdk/src/index.ts"],
   "out": "docs/reference/sdk",
   "plugin": ["typedoc-plugin-markdown"],

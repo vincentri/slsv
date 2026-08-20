@@ -12,7 +12,10 @@ export async function tailLogs(logs: CloudWatchLogsClient, fnName: string, follo
         process.stdout.write(`[${fnName}] ${e.message ?? ""}`);
         if (e.timestamp) startTime = e.timestamp + 1;
       }
-    } catch {}
+    } catch (e: any) {
+      const GONE = /(NotFound|NoSuch|DoesNotExist|NonExistent)/i;
+      if (!GONE.test(e?.name ?? String(e))) console.warn(`[tailLogs] ${e?.message ?? e}`);
+    }
   };
 
   await printBatch();

@@ -5,7 +5,7 @@
   "description": "slsv — simple local-AWS serverless framework (monorepo)",
   "scripts": {
     "build": "pnpm -r build",
-    "link:cli": "pnpm --filter @slsv/sdk build && pnpm --filter @slsv/cli build:link",
+    "build:link": "pnpm --filter @slsv/sdk build && pnpm --filter @slsv/cli build:link",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint && oxlint .",
     "format": "oxfmt . '!**/.tokensave/**'",
@@ -18,13 +18,16 @@
     "docs:sdk": "tsx scripts/docs/sdk.ts",
     "build:docs": "tsx scripts/docs/build.ts"
   },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=11"
+  },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
     "tsx": "^4.19.2",
     "typedoc": "^0.28.0",
-    "typedoc-plugin-markdown": "^4.7.0",
-    "commander": "^15.0.0"
+    "typedoc-plugin-markdown": "^4.7.0"
   }
 }

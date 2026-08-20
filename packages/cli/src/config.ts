@@ -297,9 +297,7 @@ export type DynamoDbDef = z.infer<typeof DynamoDbConfig>;
 export type WorkerDef = z.infer<typeof WorkerConfig>;
 export type FrontendDef = z.infer<typeof FrontendConfig>;
 
-// ponytail: re-exported for the docs generator (scripts/docs/schema.ts). The runtime schema is
-// the same object — no behavior change.
-export const AppConfigSchema = AppConfig;
+// docs-only: re-exported for scripts/docs/schema.ts (runtime schema is same object). ponytail: docs import only.
 
 // Normalize a function's `bucket:` trigger (single object or array) to an array.
 export function bucketTriggers(
@@ -316,18 +314,31 @@ export function dlqName(queue: string, dlq: boolean | string | undefined): strin
   return typeof dlq === "string" ? dlq : undefined;
 }
 
+export const DEFAULTS = {
+  memory: 256,
+  timeout: 30,
+  ephemeral: 512,
+  arch: "arm64",
+  instanceClass: "db.t3.micro",
+  storage: 20,
+  multiAz: false,
+} as const;
+
 // Deep-merge an overlay onto a base: objects merge recursively, arrays/scalars replace,
 // and an explicit `null` in the overlay removes the key (needed to swap e.g. a queue
 // trigger for an event trigger between stages).
-function deepMerge(base: any, over: any): any {
-  if (over === null || typeof over !== "object" || Array.isArray(over)) return over;
-  if (base === null || typeof base !== "object" || Array.isArray(base)) return { ...over };
-  const out: any = { ...base };
-  for (const [k, v] of Object.entries(over)) {
+type DeepPartial<T> = T extends object
+  ? { [P in keyof T]?: DeepPartial<T[P]> | null } & Record<string, unknown>
+  : T | null;
+function deepMerge<T extends Record<string, unknown>>(base: T, over: DeepPartial<T>): T {
+  if (over === null || typeof over !== "object" || Array.isArray(over)) return over as unknown as T;
+  if (base === null || typeof base !== "object" || Array.isArray(base)) return { ...(over as object) } as unknown as T;
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(over as Record<string, unknown>)) {
     if (v === null) delete out[k];
-    else out[k] = k in base ? deepMerge(base[k], v) : v;
+    else out[k] = k in (base as Record<string, unknown>) ? deepMerge((base as Record<string, unknown>)[k] as Record<string, unknown>, v as DeepPartial<Record<string, unknown>>) : v;
   }
-  return out;
+  return out as unknown as T;
 }
 
 export function loadConfig(cwd: string = process.cwd(), stage = "dev"): AppConfig {

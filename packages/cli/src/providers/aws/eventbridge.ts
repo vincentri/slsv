@@ -22,28 +22,27 @@ function toAwsCron(schedule: string): string {
   return `cron(${min} ${hour} ${awsDom} ${month} ${awsDow} *)`;
 }
 
-// EventBridge event-pattern trigger: invoke the function when an event on the (default)
-// bus matches `pattern`. Mirrors ensureCronTriggers but with EventPattern, not a schedule.
-// ponytail: default bus only. Add `EventBusName` + a CreateEventBus get-or-create if a
-// named bus is ever needed.
-export async function ensureEventTriggers(
+async function ensureRules(
   events: EventBridgeClient,
   lambda: LambdaClient,
   functions: AppConfig["functions"],
   fnOutputs: Record<string, AwsFnOutput>,
   appName: string,
   tags: Record<string, string>,
+  kind: "cron" | "event",
 ) {
   for (const [fnName, fn] of Object.entries(functions ?? {})) {
-    if (!fn.event) continue;
+    if (kind === "cron" ? !fn.cron : !fn.event) continue;
     const fnOutput = fnOutputs[fnName];
     // `-evt` suffix so an event rule never collides with a cron rule for the same function.
-    const ruleName = `${appName}-${fnName}-evt`;
+    const ruleName = kind === "event" ? `${appName}-${fnName}-evt` : `${appName}-${fnName}`;
 
     await events.send(
       new PutRuleCommand({
         Name: ruleName,
-        EventPattern: JSON.stringify(fn.event.pattern),
+        ...(kind === "cron"
+          ? { ScheduleExpression: toAwsCron(fn.cron!.schedule) }
+          : { EventPattern: JSON.stringify(fn.event!.pattern) }),
         State: "ENABLED",
         Tags: asTagArray(tags),
       }),
@@ -73,7 +72,11 @@ export async function ensureEventTriggers(
   }
 }
 
-export async function ensureCronTriggers(
+// EventBridge event-pattern trigger: invoke the function when an event on the (default)
+// bus matches `pattern`.
+// ponytail: default bus only. Add `EventBusName` + a CreateEventBus get-or-create if a
+// named bus is ever needed.
+export function ensureEventTriggers(
   events: EventBridgeClient,
   lambda: LambdaClient,
   functions: AppConfig["functions"],
@@ -81,40 +84,16 @@ export async function ensureCronTriggers(
   appName: string,
   tags: Record<string, string>,
 ) {
-  for (const [fnName, fn] of Object.entries(functions ?? {})) {
-    if (!fn.cron) continue;
-    const fnOutput = fnOutputs[fnName];
-    const ruleName = `${appName}-${fnName}`;
+  return ensureRules(events, lambda, functions, fnOutputs, appName, tags, "event");
+}
 
-    await events.send(
-      new PutRuleCommand({
-        Name: ruleName,
-        ScheduleExpression: toAwsCron(fn.cron.schedule),
-        State: "ENABLED",
-        Tags: asTagArray(tags),
-      }),
-    );
-
-    await events.send(
-      new PutTargetsCommand({
-        Rule: ruleName,
-        Targets: [{ Id: fnOutput.name, Arn: fnOutput.arn }],
-      }),
-    );
-
-    try {
-      const { region, account } = arnRegionAccount(fnOutput.arn);
-      await lambda.send(
-        new AddPermissionCommand({
-          FunctionName: fnOutput.name,
-          StatementId: `events-${ruleName}`,
-          Action: "lambda:InvokeFunction",
-          Principal: "events.amazonaws.com",
-          SourceArn: `arn:aws:events:${region}:${account}:rule/${ruleName}`,
-        }),
-      );
-    } catch (e: any) {
-      if (e.name !== "ResourceConflictException") throw e;
-    }
-  }
+export function ensureCronTriggers(
+  events: EventBridgeClient,
+  lambda: LambdaClient,
+  functions: AppConfig["functions"],
+  fnOutputs: Record<string, AwsFnOutput>,
+  appName: string,
+  tags: Record<string, string>,
+) {
+  return ensureRules(events, lambda, functions, fnOutputs, appName, tags, "cron");
 }

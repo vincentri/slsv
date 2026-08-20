@@ -3,9 +3,10 @@ import { drizzle as mysqlDrizzle } from "drizzle-orm/mysql2";
 import pg from "pg";
 import mysql from "mysql2/promise";
 
-// Cache one Drizzle client per connection string for the container's lifetime — one pool
-// per warm Lambda, not per call (same rationale as getSecret's cache).
-const cache = new Map<string, unknown>();
+// Cache one Drizzle client per connection string + schema identity for the container's
+// lifetime — one pool per warm Lambda, not per call (same rationale as getSecret's cache).
+const cache = new Map<string, Map<unknown, unknown>>();
+const NO_SCHEMA = Symbol("no-schema");
 
 /**
  * Return type of makeSql/sql: a Drizzle client plus `.$client` (the underlying pg Pool —
@@ -30,15 +31,22 @@ export function makeSql<TSchema extends Record<string, unknown> = Record<string,
   connString: string,
   opts: { schema?: TSchema } = {},
 ): SqlClient<TSchema> {
-  const cached = cache.get(connString);
-  if (cached) return cached as SqlClient<TSchema>;
+  const schemaKey = opts.schema ?? NO_SCHEMA;
+  let bySchema = cache.get(connString);
+  if (bySchema) {
+    const hit = bySchema.get(schemaKey);
+    if (hit) return hit as SqlClient<TSchema>;
+  } else {
+    bySchema = new Map();
+    cache.set(connString, bySchema);
+  }
 
   // ponytail: both dialect drivers (pg + mysql2) are bundled into every handler. esbuild
   // inlines both branches; dynamic-import the used one only if bundle size ever matters.
   // drizzle()'s overloads reject an explicit `undefined` 2nd arg, so branch on schema.
-  const isMysql = /^mysql:/i.test(connString);
+  const useMysql = /^mysql2?:/i.test(connString);
   let client;
-  if (isMysql) {
+  if (useMysql) {
     const pool = mysql.createPool(connString);
     // mysql2 needs `mode` only when a schema is supplied.
     client = opts.schema
@@ -49,7 +57,7 @@ export function makeSql<TSchema extends Record<string, unknown> = Record<string,
     client = opts.schema ? pgDrizzle(pool, { schema: opts.schema }) : pgDrizzle(pool);
   }
 
-  cache.set(connString, client);
+  bySchema.set(schemaKey, client);
   // ponytail: mysql runtime returns MySql2Database but we type as NodePgDatabase for one
   // return type — the query-builder / `.query.*` / `.$client` surface is structurally the
   // same, so user code types fine. Dialect-only APIs (e.g. mysql `.$returningId`) aren't

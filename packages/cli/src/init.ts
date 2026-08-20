@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { FLOCI_ENDPOINT } from "./providers/aws/constants.js";
 
 // Injected by tsup at build time (see tsup.config.ts) — the SDK version this CLI ships with.
 declare const __SDK_VERSION__: string;
@@ -666,7 +667,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: process.env.SLSV_API_URL || "http://localhost:4566",
+        target: process.env.SLSV_API_URL || "${FLOCI_ENDPOINT}",
         changeOrigin: true,
       },
     },

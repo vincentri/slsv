@@ -16,7 +16,7 @@ async function cf(path: string, init?: RequestInit): Promise<any> {
     headers: {
       Authorization: `Bearer ${token()}`,
       "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
+      ...(init?.headers ?? undefined),
     },
   });
   const body: any = await res.json();
@@ -27,11 +27,23 @@ async function cf(path: string, init?: RequestInit): Promise<any> {
 
 // Find the Cloudflare zone that owns a hostname — the token's zone whose name is a suffix of
 // the domain, longest match wins (api.myapp.com → zone myapp.com). Lets the user give just the
-// domain; no separate zone field. ponytail: per_page=50 (one page) — add pagination if a single
-// token ever fronts >50 zones.
+// domain; no separate zone field.
 export async function cfZoneIdForDomain(domain: string): Promise<string> {
-  const zones: { id: string; name: string }[] = await cf(`/zones?per_page=50`);
-  const match = (zones ?? [])
+  const zones: { id: string; name: string }[] = [];
+  let page = 1;
+  while (true) {
+    const res = await fetch(`${API}/zones?per_page=50&page=${page}`, {
+      headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+    });
+    const body: any = await res.json();
+    if (!body.success)
+      throw new Error(`Cloudflare GET /zones?per_page=50&page=${page}: ${JSON.stringify(body.errors)}`);
+    zones.push(...(body.result ?? []));
+    const info = body.result_info;
+    if (!info || page >= info.total_pages || (body.result?.length ?? 0) < 50) break;
+    page++;
+  }
+  const match = zones
     .filter((z) => domain === z.name || domain.endsWith(`.${z.name}`))
     .sort((a, b) => b.name.length - a.name.length)[0];
   if (!match) throw new Error(`no Cloudflare zone owns ${domain} (does the token have access?)`);

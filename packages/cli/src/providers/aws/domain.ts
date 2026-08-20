@@ -17,11 +17,11 @@ import {
   DeleteCertificateCommand,
 } from "@aws-sdk/client-acm";
 import type { AppConfig } from "../../config.js";
+import { sleep } from "../../utils/sleep.js";
 import { cfZoneIdForDomain, cfUpsertCname, cfDeleteByName } from "./cloudflare.js";
+import { isGone } from "./errors.js";
 
 type Api = NonNullable<AppConfig["api"]>;
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const stripDot = (s: string) => s.replace(/\.$/, "");
 
 // Provision an API Gateway custom domain end-to-end: ACM cert (DNS-validated via the DNS
@@ -44,7 +44,7 @@ export async function ensureApiDomain(
   const existing = await apigw
     .send(new GetDomainNameCommand({ DomainName: domain }))
     .catch((e: any) => {
-      if (e?.name === "NotFoundException") return null;
+      if (isGone(e)) return null;
       throw e;
     });
   if (!existing) {
@@ -101,8 +101,7 @@ export async function ensureApiDomain(
 //   - deploy (opts.keep set): failures warn + continue — a stray old domain must not block a deploy.
 //   - destroy (opts.blockOnError): failures are collected and thrown so the destroy step reports ✗
 //     and the command exits non-zero (matches the rest of destroy), after attempting every domain.
-// ponytail: reads one page of GetDomainNames (paginate if an account fronts >100 domains); a BYO
-// exact-match (non-wildcard) cert on an old domain WOULD be deleted — rare, note it if hit.
+// ponytail: a BYO exact-match (non-wildcard) cert on an old domain WOULD be deleted — rare, note it if hit.
 export async function sweepApiDomains(
   apigw: ApiGatewayV2Client,
   acm: ACMClient,
@@ -113,7 +112,14 @@ export async function sweepApiDomains(
   const apiId = apis.Items?.find((a) => a.Name === appName)?.ApiId;
   if (!apiId) return 0;
 
-  const domains = await apigw.send(new GetDomainNamesCommand({}));
+  const allDomains: any[] = [];
+  let nextToken: string | undefined;
+  do {
+    const res: any = await apigw.send(new GetDomainNamesCommand({ NextToken: nextToken } as any));
+    allDomains.push(...(res.Items ?? []));
+    nextToken = res.NextToken;
+  } while (nextToken);
+  const domains = { Items: allDomains } as any;
   const failures: string[] = [];
   let removed = 0;
   for (const d of domains.Items ?? []) {
@@ -121,7 +127,7 @@ export async function sweepApiDomains(
     if (!name || name === opts.keep) continue;
     const mappings = await apigw.send(new GetApiMappingsCommand({ DomainName: name }));
     if (!mappings.Items?.some((m) => m.ApiId === apiId)) continue;
-    const api = opts.current?.domain === name ? opts.current : { domain: name };
+    const api = (opts.current?.domain === name ? opts.current : { domain: name }) as Api;
     console.log(opts.keep ? `  pruning old custom domain ${name} (replaced by ${opts.keep})` : `  removing custom domain ${name}`);
     try {
       // appName → mapping-aware: on a shared domain this only drops THIS app's mapping and keeps
@@ -180,7 +186,7 @@ const getMappings = (apigw: ApiGatewayV2Client, domain: string) =>
     .send(new GetApiMappingsCommand({ DomainName: domain }))
     .then((r) => r.Items ?? [])
     .catch((e: any) => {
-      if (e?.name === "NotFoundException") return [];
+      if (isGone(e)) return [];
       throw e;
     });
 
@@ -224,7 +230,7 @@ export async function destroyApiDomain(
 
   // Domain name first — releases the cert so ACM will let us delete it.
   await apigw.send(new DeleteDomainNameCommand({ DomainName: domain })).catch((e: any) => {
-    if (e?.name !== "NotFoundException") throw e;
+    if (!isGone(e)) throw e;
   });
 
   // Cloudflare records — token REQUIRED. cfZoneIdForDomain throws a clear error if the token is

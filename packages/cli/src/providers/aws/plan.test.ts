@@ -139,10 +139,10 @@ describe("classify", () => {
 });
 
 describe("workers", () => {
-  const cfg = { app: "shop", workers: { clip: { image: "./worker" } } } as unknown as AppConfig;
+  const workerCfg = { app: "shop", workers: { clip: { image: "./worker" } } } as unknown as AppConfig;
 
   it("plans a create when the task-definition family is absent", () => {
-    const { changes } = classify(cfg, "dev", EMPTY);
+    const { changes } = classify(workerCfg, "dev", EMPTY);
     expect(changes).toContainEqual({ action: "create", kind: "worker", name: "clip" });
   });
 
@@ -160,7 +160,7 @@ describe("workers", () => {
   });
 
   it("reports nothing when the family already matches", () => {
-    const { changes } = classify(cfg, "dev", { ...EMPTY, workers: ["shop-dev-clip"] });
+    const { changes } = classify(workerCfg, "dev", { ...EMPTY, workers: ["shop-dev-clip"] });
     expect(changes.filter((c) => c.kind === "worker")).toEqual([]);
   });
 });

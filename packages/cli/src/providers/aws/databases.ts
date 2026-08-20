@@ -10,6 +10,8 @@ import {
 import pg from "pg";
 import mysql from "mysql2/promise";
 import { envKey } from "../../env-key.js";
+import { sleep } from "../../utils/sleep.js";
+import { pollUntil } from "../../utils/poll.js";
 import { asTagArray } from "./tags.js";
 import type { AppConfig } from "../../config.js";
 
@@ -174,11 +176,10 @@ async function isDbAlive(
 // Poll DescribeDBInstances until the instance is gone after a delete, so the recreate doesn't
 // race an in-flight teardown. ponytail: proceed on timeout — recreate swallows AlreadyExists.
 async function waitForGone(client: RDSClient, instanceId: string, maxMs = 30_000) {
-  const start = Date.now();
-  while (Date.now() - start < maxMs) {
-    if (!(await describeInstance(client, instanceId))) return;
-    await sleep(1000);
-  }
+  await pollUntil(
+    async () => (!(await describeInstance(client, instanceId)) ? ({} as any) : undefined),
+    { interval: 1000, timeout: maxMs },
+  ).catch(() => {});
 }
 
 async function describeInstance(client: RDSClient, instanceId: string) {
@@ -190,15 +191,20 @@ async function describeInstance(client: RDSClient, instanceId: string) {
 
 // ponytail: polls DescribeDBInstances up to 120s. floci is ~2-5s; real AWS is minutes.
 async function waitForAvailable(client: RDSClient, instanceId: string, maxMs = 120_000) {
-  const start = Date.now();
-  while (Date.now() - start < maxMs) {
-    const inst = await describeInstance(client, instanceId);
-    const status = inst?.DBInstanceStatus;
-    if (status === "available") return inst;
-    if (status === "failed") throw new Error(`RDS instance ${instanceId} failed to provision`);
-    await sleep(2000);
+  try {
+    return await pollUntil(
+      async () => {
+        const inst = await describeInstance(client, instanceId);
+        const status = inst?.DBInstanceStatus;
+        if (status === "failed") throw new Error(`RDS instance ${instanceId} failed to provision`);
+        return status === "available" ? inst : undefined;
+      },
+      { interval: 2000, timeout: maxMs },
+    );
+  } catch (e: any) {
+    if (e.message?.includes("failed to provision")) throw e;
+    throw new Error(`RDS instance ${instanceId} did not become available within ${maxMs / 1000}s`);
   }
-  throw new Error(`RDS instance ${instanceId} did not become available within ${maxMs / 1000}s`);
 }
 
 async function runInitSql(engine: SqlEngine, url: string, sql: string) {
@@ -220,8 +226,4 @@ async function runInitSql(engine: SqlEngine, url: string, sql: string) {
   }
 }
 
-// External databases: BYO connection string from process.env (DATABASE_<NAME>). Not provisioned.
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}

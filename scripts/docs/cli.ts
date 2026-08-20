@@ -1,14 +1,11 @@
 import { writeFileSync, mkdirSync } from "fs";
-import type { Command } from "commander";
 import { buildProgram } from "../../packages/cli/src/program.js";
 
 const DIR = "docs/reference/cli";
 mkdirSync(DIR, { recursive: true });
 
 const program = buildProgram();
-const commands = [...program.commands].sort((a: Command, b: Command) =>
-  a.name().localeCompare(b.name()),
-);
+const commands = [...program.commands].sort((a, b) => a.name().localeCompare(b.name()));
 
 // ponytail: trust commander's own helpInformation — it's the same string `slsv <cmd> --help`
 // would print. Per-command page = full help block + subcommand list. Index = command table.
@@ -59,8 +56,6 @@ writeFileSync(`${DIR}/index.md`, index.join("\n") + "\n");
 console.log(`✓ ${DIR}/ (${commands.length} commands)`);
 
 function stripColor(s: string): string {
-  // ponytail: build the ANSI escape character at runtime so the source has no literal control char
-  // (oxlint's no-control-regex flags the regex form).
-  const ESC = String.fromCharCode(0x1b);
-  return s.replace(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "");
+  // oxlint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;]*m/g, "");
 }

@@ -21,8 +21,7 @@ import type { AppConfig } from "../../config.js";
 import { ConfigError } from "../../config.js";
 import type { AwsFnOutput } from "./functions.js";
 import { arnRegionAccount } from "./eventbridge.js";
-
-const FLOCI_ENDPOINT = "http://localhost:4566";
+import { FLOCI_ENDPOINT } from "./constants.js";
 
 // Delete the HTTP API for this app+stage (the API is named `appName`). Deleting the API
 // cascades its routes, integrations and stages. No-op if it doesn't exist.

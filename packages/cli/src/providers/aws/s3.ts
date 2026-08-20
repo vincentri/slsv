@@ -15,6 +15,72 @@ import { LambdaClient, AddPermissionCommand } from "@aws-sdk/client-lambda";
 import { asTagArray } from "./tags.js";
 import { arnRegionAccount } from "./eventbridge.js";
 import { bucketTriggers, type AppConfig } from "../../config.js";
+import { resourceName } from "../../utils/names.js";
+
+export async function ensureBucketExists(
+  s3: S3Client,
+  bucket: string,
+  tags: Record<string, string>,
+  opts: { publicRead?: boolean; cors?: string[] } = {},
+): Promise<void> {
+  try {
+    await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+  } catch {
+    await s3.send(new CreateBucketCommand({ Bucket: bucket }));
+  }
+  await s3.send(
+    new PutBucketTaggingCommand({ Bucket: bucket, Tagging: { TagSet: asTagArray(tags) } }),
+  );
+  if (opts.publicRead) {
+    await s3.send(
+      new PutPublicAccessBlockCommand({
+        Bucket: bucket,
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: false,
+          IgnorePublicAcls: false,
+          BlockPublicPolicy: false,
+          RestrictPublicBuckets: false,
+        },
+      }),
+    );
+    await s3.send(
+      new PutBucketPolicyCommand({
+        Bucket: bucket,
+        Policy: JSON.stringify({
+          Version: "2012-10-17",
+          Statement: [
+            {
+              Effect: "Allow",
+              Principal: "*",
+              Action: "s3:GetObject",
+              Resource: `arn:aws:s3:::${bucket}/*`,
+            },
+          ],
+        }),
+      }),
+    );
+  }
+  if (opts.cors && opts.cors.length > 0) {
+    // ponytail: GET/PUT/HEAD cover read + presigned-upload. POST is required for the
+    // legacy form-upload flow most browsers use when JS SDKs aren't available.
+    await s3.send(
+      new PutBucketCorsCommand({
+        Bucket: bucket,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: opts.cors,
+              AllowedMethods: ["GET", "PUT", "POST", "HEAD"],
+              AllowedHeaders: ["*"],
+              ExposeHeaders: ["ETag"],
+              MaxAgeSeconds: 3000,
+            },
+          ],
+        },
+      }),
+    );
+  }
+}
 
 export async function ensureBuckets(
   s3: S3Client,
@@ -26,71 +92,11 @@ export async function ensureBuckets(
   if (!buckets) return envVars;
 
   for (const [name, cfg] of Object.entries(buckets)) {
-    const bucketName = `${appName}-${name}`.toLowerCase();
-    try {
-      await s3.send(new HeadBucketCommand({ Bucket: bucketName }));
-      console.log(`  ✓ bucket ${bucketName} exists`);
-    } catch {
-      await s3.send(new CreateBucketCommand({ Bucket: bucketName }));
-      console.log(`  + created bucket ${bucketName}`);
-    }
-    await s3.send(
-      new PutBucketTaggingCommand({ Bucket: bucketName, Tagging: { TagSet: asTagArray(tags) } }),
-    );
-
-    if (cfg.publicRead) {
-      // Same 3-call shape as frontend.ts: disable the public-access blocks, then attach
-      // an s3:GetObject policy. Idempotent — safe to re-run on every deploy.
-      await s3.send(
-        new PutPublicAccessBlockCommand({
-          Bucket: bucketName,
-          PublicAccessBlockConfiguration: {
-            BlockPublicAcls: false,
-            IgnorePublicAcls: false,
-            BlockPublicPolicy: false,
-            RestrictPublicBuckets: false,
-          },
-        }),
-      );
-      await s3.send(
-        new PutBucketPolicyCommand({
-          Bucket: bucketName,
-          Policy: JSON.stringify({
-            Version: "2012-10-17",
-            Statement: [
-              {
-                Effect: "Allow",
-                Principal: "*",
-                Action: "s3:GetObject",
-                Resource: `arn:aws:s3:::${bucketName}/*`,
-              },
-            ],
-          }),
-        }),
-      );
-    }
-
-    if (cfg.cors && cfg.cors.length > 0) {
-      // ponytail: GET/PUT/HEAD cover read + presigned-upload. POST is required for the
-      // legacy form-upload flow most browsers use when JS SDKs aren't available.
-      await s3.send(
-        new PutBucketCorsCommand({
-          Bucket: bucketName,
-          CORSConfiguration: {
-            CORSRules: [
-              {
-                AllowedOrigins: cfg.cors,
-                AllowedMethods: ["GET", "PUT", "POST", "HEAD"],
-                AllowedHeaders: ["*"],
-                ExposeHeaders: ["ETag"],
-                MaxAgeSeconds: 3000,
-              },
-            ],
-          },
-        }),
-      );
-    }
-
+    const bucketName = resourceName(appName, name).toLowerCase();
+    await ensureBucketExists(s3, bucketName, tags, {
+      publicRead: cfg.publicRead,
+      cors: cfg.cors,
+    });
     envVars[envKey("BUCKET", name)] = bucketName;
   }
 
@@ -119,7 +125,7 @@ export async function ensureBucketTriggers(
   };
 
   for (const logical of Object.keys(buckets ?? {})) {
-    const bucketName = `${appName}-${logical}`.toLowerCase();
+    const bucketName = resourceName(appName, logical).toLowerCase();
     const configs: LambdaFunctionConfiguration[] = [];
 
     for (const [fnName, fn] of Object.entries(functions ?? {})) {

@@ -49,10 +49,6 @@ jobs:
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
 
-      # pnpm 11 silently ignores `onlyBuiltDependencies` — the `dangerouslyAllowAllBuilds`
-      # file in scaffolded apps handles esbuild/vite. The monorepo doesn't have it; if any
-      # dep here has a postinstall, allow it (none should — typedoc/zod-to-json-schema are
-      # pure JS).
       - name: Build all packages
         run: pnpm build
 

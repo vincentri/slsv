@@ -6,10 +6,9 @@ import {
   UpdateEventSourceMappingCommand,
 } from "@aws-sdk/client-lambda";
 import type { AppConfig } from "../../config.js";
+import { sleep } from "../../utils/sleep.js";
 import type { AwsFnOutput } from "./functions.js";
 import type { QueueOutput } from "./sqs.js";
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function ensureEventSourceMappings(
   lambda: LambdaClient,

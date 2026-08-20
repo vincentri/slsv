@@ -1,4 +1,5 @@
 import { ECSClient, RunTaskCommand } from "@aws-sdk/client-ecs";
+import { stringifyBody } from "../../utils/chunk.js";
 
 // Shape slsv injects as WORKER_<NAME> (see cli providers/aws/workers.ts).
 type WorkerSpec = {
@@ -28,7 +29,7 @@ export function makeWorker(specJson: string): WorkerClient {
   const spec: WorkerSpec = JSON.parse(specJson);
   return {
     async run(payload) {
-      const body = JSON.stringify(payload ?? {});
+      const body = stringifyBody(payload ?? {});
       // ECS caps the whole overrides object near 8KB and reports it as a generic
       // InvalidParameterException — say what's actually wrong instead.
       if (body.length > 8000)
