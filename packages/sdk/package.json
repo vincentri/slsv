@@ -1,6 +1,6 @@
 {
   "name": "@slsv/sdk",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Cloud-agnostic SDK for slsv apps — write once, run on any cloud",
   "license": "MIT",
   "repository": {
