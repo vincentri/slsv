@@ -11,6 +11,7 @@ import { runUpgrade } from "./upgrade.js";
 
 // Inlined by tsup from packages/cli/package.json — tracks the changesets bump automatically.
 declare const __CLI_VERSION__: string;
+const cliVersion = typeof __CLI_VERSION__ === "undefined" ? "0.0.0-dev" : __CLI_VERSION__;
 
 export function validStage(stage: string): string {
   if (!/^[a-z0-9-]+$/.test(stage)) {
@@ -32,7 +33,7 @@ function runScaffold(name: string, cwd: string, template: Template, stack: Stack
 export function buildProgram(): Command {
   const program = new Command();
 
-  program.name("slsv").description("Simple local-AWS serverless framework").version(__CLI_VERSION__);
+  program.name("slsv").description("Simple local-AWS serverless framework").version(cliVersion);
 
   program
     .command("init [name]")
@@ -259,7 +260,7 @@ export function buildProgram(): Command {
     .action(async (opts: { force: boolean }) => {
       await runUpgrade({
         moduleUrl: import.meta.url,
-        currentVersion: __CLI_VERSION__,
+        currentVersion: cliVersion,
         force: opts.force,
       });
     });

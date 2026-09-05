@@ -301,7 +301,9 @@ export type DynamoDbDef = z.infer<typeof DynamoDbConfig>;
 export type WorkerDef = z.infer<typeof WorkerConfig>;
 export type FrontendDef = z.infer<typeof FrontendConfig>;
 
-// docs-only: re-exported for scripts/docs/schema.ts (runtime schema is same object). ponytail: docs import only.
+// ponytail: re-exported for the docs generator (scripts/docs/schema.ts). The runtime schema is
+// the same object — no behavior change.
+export const AppConfigSchema = AppConfig;
 
 // Normalize a function's `bucket:` trigger (single object or array) to an array.
 export function bucketTriggers(

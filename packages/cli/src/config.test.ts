@@ -2,7 +2,19 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import os from "os";
-import { loadConfig, ConfigError, fargateDefaultMemory, bucketTriggers } from "./config.js";
+import {
+  loadConfig,
+  ConfigError,
+  fargateDefaultMemory,
+  bucketTriggers,
+  AppConfigSchema,
+} from "./config.js";
+
+describe("docs schema export", () => {
+  it("exposes the runtime AppConfig schema", () => {
+    expect(AppConfigSchema.toJSONSchema()).toHaveProperty("properties.app");
+  });
+});
 
 // Exercises the `stages:` overlay: deep-merge, scalar override, and null-removal trigger swap.
 describe("loadConfig stage overlay", () => {
