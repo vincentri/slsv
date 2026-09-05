@@ -154,6 +154,36 @@ describe("lintApp", () => {
     warn.mockRestore();
   });
 
+  it("recognizes secrets passed through a helper that calls secret(name)", () => {
+    write(
+      "src/api.ts",
+      `import { secret } from '@slsv/sdk'
+async function loadSecret(name: string) {
+  return secret(name)
+}
+export const handler = async () => {
+  await loadSecret('DATABASE_URL')
+  await loadSecret('SESSION_SECRET')
+}`,
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cfg = {
+      app: "x",
+      functions: { api: fn("./src/api.handler") },
+      secrets: ["DATABASE_URL", "SESSION_SECRET", "UNUSED"],
+    } as unknown as AppConfig;
+
+    expect(() => lintApp(cfg, tmp)).not.toThrow();
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringMatching(/secret 'DATABASE_URL'.*never used/),
+    );
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringMatching(/secret 'SESSION_SECRET'.*never used/),
+    );
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/secret 'UNUSED'.*never used/));
+    warn.mockRestore();
+  });
+
   it("does not warn on a queue used only as a DLQ target", () => {
     write("src/api.ts", `export const handler = async () => 1`);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

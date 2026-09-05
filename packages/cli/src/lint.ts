@@ -85,9 +85,7 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
     if (!imported.size) continue;
     const rel = path.relative(cwd, file);
     for (const [local, accessor] of imported) {
-      const call = new RegExp(`\\b${local}\\s*\\(\\s*['"]([^'"]+)['"]`, "g");
-      for (const m of src.matchAll(call)) {
-        const logical = m[1];
+      for (const logical of sdkAccessorReferences(src, local)) {
         referenced[accessor].add(logical);
         if (!nameSets[accessor].has(logical))
           errors.push(
@@ -176,6 +174,34 @@ function sdkImports(src: string): Map<string, string> {
     if (accessor && accessor in ACCESSOR_LABEL) out.set((alias ?? orig).trim(), accessor);
   }
   return out;
+}
+
+// Collect literal SDK accessor arguments, including one simple named-function wrapper such as
+// `loadSecret(name) { return secret(name) }`. This keeps the linter useful for cold-start
+// helpers without pretending to be a full data-flow analyzer. ponytail: arrow wrappers and
+// multi-level indirection remain unsupported until a real app needs them.
+function sdkAccessorReferences(src: string, local: string): Set<string> {
+  const references = new Set<string>();
+  const escapedLocal = local.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const directCall = new RegExp(`\\b${escapedLocal}\\s*\\(\\s*['"]([^'"]+)['"]`, "g");
+  for (const match of src.matchAll(directCall)) references.add(match[1]);
+
+  const functionDeclaration =
+    /(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(\s*([A-Za-z_$][\w$]*)\b[^)]*\)\s*[^{}]*\{([\s\S]*?)\}/g;
+  for (const match of src.matchAll(functionDeclaration)) {
+    const [, wrapper, parameter, body] = match;
+    const delegatedCall = new RegExp(
+      `\\b${escapedLocal}\\s*\\(\\s*${parameter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\)`,
+    );
+    if (!delegatedCall.test(body)) continue;
+
+    const wrappedCall = new RegExp(
+      `\\b${wrapper.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\(\\s*['"]([^'"]+)['"]`,
+      "g",
+    );
+    for (const call of src.matchAll(wrappedCall)) references.add(call[1]);
+  }
+  return references;
 }
 
 // True if source has a top-level export of `name`. Covers the shapes handlers use:
