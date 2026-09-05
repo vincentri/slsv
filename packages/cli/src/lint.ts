@@ -81,6 +81,9 @@ export function lintApp(cfg: AppConfig, cwd: string): void {
   // '@slsv/sdk' (avoids false positives on same-named local methods like `this.queue()`). ---
   for (const file of sourceFiles(cwd)) {
     const src = readFileSync(file, "utf8");
+    // Literal process.env reads count as secret usage; dynamic lookups remain unresolvable here.
+    for (const match of src.matchAll(/\bprocess\.env\.([A-Za-z_][A-Za-z0-9_]*)\b/g))
+      if (nameSets.secret.has(match[1])) referenced.secret.add(match[1]);
     const imported = sdkImports(src); // localName -> accessor (handles `db as ddb` aliases)
     if (!imported.size) continue;
     const rel = path.relative(cwd, file);

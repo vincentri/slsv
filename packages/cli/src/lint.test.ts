@@ -154,6 +154,26 @@ describe("lintApp", () => {
     warn.mockRestore();
   });
 
+  it("recognizes secrets read directly from process.env", () => {
+    write(
+      "src/api.ts",
+      `export const handler = async () => process.env.ENVELOPE_MASTER_KEY ?? ""`,
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cfg = {
+      app: "x",
+      functions: { api: fn("./src/api.handler") },
+      secrets: ["ENVELOPE_MASTER_KEY", "UNUSED"],
+    } as unknown as AppConfig;
+
+    expect(() => lintApp(cfg, tmp)).not.toThrow();
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringMatching(/secret 'ENVELOPE_MASTER_KEY'.*never used/),
+    );
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/secret 'UNUSED'.*never used/));
+    warn.mockRestore();
+  });
+
   it("recognizes secrets passed through a helper that calls secret(name)", () => {
     write(
       "src/api.ts",
