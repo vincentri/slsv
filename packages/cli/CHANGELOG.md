@@ -1,5 +1,12 @@
 # @slsv/cli
 
+## 0.2.7
+
+### Patch Changes
+
+- c6dc0ce: Recognize secrets read directly through `process.env` during deployment linting.
+  - @slsv/sdk@0.2.7
+
 ## 0.2.6
 
 ### Patch Changes
