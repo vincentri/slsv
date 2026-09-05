@@ -1,5 +1,13 @@
 # @slsv/cli
 
+## 0.2.6
+
+### Patch Changes
+
+- d4dc9e4: fix: recognize wrapped secret usage and keep source-based docs generation working
+- Updated dependencies [d4dc9e4]
+  - @slsv/sdk@0.2.6
+
 ## 0.2.5
 
 ### Patch Changes
